@@ -150,8 +150,12 @@ export async function excluirItem(
   usuarioId: string,
   id: string,
   repo: ItemRepo,
+  limparFotos?: (usuarioId: string, donoId: string) => Promise<void>,
 ): Promise<void> {
   await carregarDoDono(usuarioId, id, repo);
+  if (limparFotos) {
+    await limparFotos(usuarioId, id);
+  }
   await repo.delete(id);
 }
 

@@ -1,16 +1,15 @@
 import { prisma } from "@/lib/db";
 import {
-  atualizarItem,
-  excluirItem,
-  itemRepoPrisma,
-  obterItem,
-  type ItemInput,
-} from "@/lib/domain/itens";
-import { apagarDono, depsFotos } from "@/lib/fotos";
+  apagarFoto,
+  depsFotos,
+  marcarCapa,
+  responderErroFoto,
+  respostaGetFoto,
+} from "@/lib/fotos";
 import { HttpErro } from "@/lib/isolamento";
 import { requireUser } from "@/lib/session";
 
-const repo = itemRepoPrisma(prisma);
+const deps = depsFotos(prisma);
 
 type ContextoRota = {
   params: Promise<{ id: string }>;
@@ -20,10 +19,9 @@ export async function GET(_request: Request, contexto: ContextoRota) {
   try {
     const { id: usuarioId } = await requireUser();
     const { id } = await contexto.params;
-    const item = await obterItem(usuarioId, id, repo);
-    return Response.json(item);
+    return respostaGetFoto(usuarioId, id, deps);
   } catch (erro) {
-    return responderErro(erro);
+    return responderErroFoto(erro);
   }
 }
 
@@ -31,15 +29,14 @@ export async function PATCH(request: Request, contexto: ContextoRota) {
   try {
     const { id: usuarioId } = await requireUser();
     const { id } = await contexto.params;
-    const item = await atualizarItem(
-      usuarioId,
-      id,
-      await lerCorpo(request),
-      repo,
-    );
-    return Response.json(item);
+    const payload = await lerCorpo(request);
+    if (payload.isCapa !== true) {
+      throw new HttpErro(400, "Informe isCapa: true para marcar a capa.");
+    }
+    const foto = await marcarCapa(usuarioId, id, deps);
+    return Response.json(foto);
   } catch (erro) {
-    return responderErro(erro);
+    return responderErroFoto(erro);
   }
 }
 
@@ -47,16 +44,14 @@ export async function DELETE(_request: Request, contexto: ContextoRota) {
   try {
     const { id: usuarioId } = await requireUser();
     const { id } = await contexto.params;
-    await excluirItem(usuarioId, id, repo, (uid, donoId) =>
-      apagarDono(uid, "ITEM", donoId, depsFotos(prisma)),
-    );
+    await apagarFoto(usuarioId, id, deps);
     return new Response(null, { status: 204 });
   } catch (erro) {
-    return responderErro(erro);
+    return responderErroFoto(erro);
   }
 }
 
-async function lerCorpo(request: Request): Promise<ItemInput> {
+async function lerCorpo(request: Request): Promise<{ isCapa?: unknown }> {
   let payload: unknown;
   try {
     payload = await request.json();
@@ -66,12 +61,5 @@ async function lerCorpo(request: Request): Promise<ItemInput> {
   if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
     throw new HttpErro(400, "JSON inválido.");
   }
-  return payload as ItemInput;
-}
-
-function responderErro(erro: unknown): Response {
-  if (erro instanceof HttpErro) {
-    return Response.json({ erro: erro.mensagem }, { status: erro.status });
-  }
-  throw erro;
+  return payload as { isCapa?: unknown };
 }
