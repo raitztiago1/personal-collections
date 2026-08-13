@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TipoColecao {
+  TENIS
+  WHISKY
+  PERFUME
+  YUGIOH
+  MANGA
+  LIVRO
+  GADGET
+
+  @@map("tipo_colecao")
+}
+
+enum TipoColecaoOrBuild {
+  TENIS
+  WHISKY
+  PERFUME
+  YUGIOH
+  MANGA
+  LIVRO
+  GADGET
+  PC_BUILD
+
+  @@map("tipo_colecao_or_build")
+}
+
+enum DonoFoto {
+  ITEM
+  WISHLIST
+  BUILD
+  PECA
+
+  @@map("dono_foto")
+}
+
+enum TipoValorExtra {
+  TEXTO
+  NUMERO
+
+  @@map("tipo_valor_extra")
+}
+
+enum AlvoExtra {
+  ITEM
+  WISHLIST
+  BUILD
+
+  @@map("alvo_extra")
+}
+
+enum TipoPeca {
+  GPU
+  CPU
+  RAM
+  ARMAZENAMENTO
+  PLACA_MAE
+  PSU
+  GABINETE
+  COOLER
+  MONITOR
+  PERIFERICO
+  OUTRO
+
+  @@map("tipo_peca")
+}
+
+model Usuario {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome      String
+  email     String   @unique @db.Citext
+  senhaHash String   @map("senha_hash")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  itens          Item[]
+  fotos          Foto[]
+  campoExtraDefs CampoExtraDef[]
+  wishlistItems  WishlistItem[]
+  decks          Deck[]
+  builds         Build[]
+
+  @@map("usuario")
+}
+
+model Item {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId     String      @map("usuario_id") @db.Uuid
+  tipoColecao   TipoColecao @map("tipo_colecao")
+  nome          String
+  descricao     String?
+  notasPessoais String?     @map("notas_pessoais")
+  dataAquisicao DateTime?   @map("data_aquisicao") @db.Date
+  precoPago     Decimal?    @map("preco_pago") @db.Decimal(12, 2)
+  tags          String[]    @default([])
+  ficha         Json        @default("{}") @db.JsonB
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  usuario    Usuario     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  deckCartas DeckCarta[]
+
+  @@index([usuarioId, tipoColecao])
+  @@index([ficha], type: Gin)
+  @@map("item")
+}
+
+model Foto {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId String   @map("usuario_id") @db.Uuid
+  donoTipo  DonoFoto @map("dono_tipo")
+  donoId    String   @map("dono_id") @db.Uuid
+  caminho   String
+  mime      String
+  ordem     Int
+  isCapa    Boolean  @default(false) @map("is_capa")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([donoTipo, donoId])
+  @@map("foto")
+}
+
+model CampoExtraDef {
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId   String             @map("usuario_id") @db.Uuid
+  tipoColecao TipoColecaoOrBuild @map("tipo_colecao")
+  nome        String
+  tipoValor   TipoValorExtra     @map("tipo_valor")
+
+  usuario Usuario           @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  valores CampoExtraValor[]
+
+  @@unique([usuarioId, tipoColecao, nome])
+  @@map("campo_extra_def")
+}
+
+model CampoExtraValor {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  definicaoId String    @map("definicao_id") @db.Uuid
+  alvoTipo    AlvoExtra @map("alvo_tipo")
+  alvoId      String    @map("alvo_id") @db.Uuid
+  valorTexto  String?   @map("valor_texto")
+  valorNumero Decimal?  @map("valor_numero") @db.Decimal(12, 2)
+
+  definicao CampoExtraDef @relation(fields: [definicaoId], references: [id], onDelete: Cascade)
+
+  @@unique([definicaoId, alvoTipo, alvoId])
+  @@map("campo_extra_valor")
+}
+
+model WishlistItem {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId     String      @map("usuario_id") @db.Uuid
+  tipoColecao   TipoColecao @map("tipo_colecao")
+  nome          String
+  descricao     String?
+  notasPessoais String?     @map("notas_pessoais")
+  tags          String[]    @default([])
+  ficha         Json        @default("{}") @db.JsonB
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, tipoColecao])
+  @@map("wishlist_item")
+}
+
+model Deck {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId String  @map("usuario_id") @db.Uuid
+  nome      String
+  formato   String?
+  notas     String?
+
+  usuario Usuario     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  cartas  DeckCarta[]
+
+  @@map("deck")
+}
+
+model DeckCarta {
+  deckId     String @map("deck_id") @db.Uuid
+  itemId     String @map("item_id") @db.Uuid
+  quantidade Int
+
+  deck Deck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  item Item @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@id([deckId, itemId])
+  @@map("deck_carta")
+}
+
+model Build {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId     String  @map("usuario_id") @db.Uuid
+  nome          String
+  descricao     String?
+  notasPessoais String? @map("notas_pessoais")
+
+  usuario Usuario     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  pecas   BuildPeca[]
+
+  @@map("build")
+}
+
+model BuildPeca {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  buildId  String   @map("build_id") @db.Uuid
+  tipoPeca TipoPeca @map("tipo_peca")
+  nome     String
+  ficha    Json     @default("{}") @db.JsonB
+  notas    String?
+
+  build Build @relation(fields: [buildId], references: [id], onDelete: Cascade)
+
+  @@map("build_peca")
+}

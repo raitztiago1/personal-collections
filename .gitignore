@@ -35,6 +35,9 @@ yarn-error.log*
 .env.*
 !.env.example
 
+# prisma generated client
+/generated
+
 # uploads
 data/uploads/
 
