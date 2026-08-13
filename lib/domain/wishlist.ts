@@ -1,6 +1,6 @@
 import path from "node:path";
 import { ZodError } from "zod";
-import { apagarDono, depsFotos, type FotoDeps } from "../fotos";
+import { depsFotos, type FotoDeps } from "../fotos";
 import { assertDono, HttpErro } from "../isolamento";
 import {
   campoExtraReposPrisma,
@@ -59,13 +59,19 @@ export type WishlistRepo = {
   delete(id: string): Promise<void>;
 };
 
+export type ResultadoCopiaFotos = {
+  caminhosNovos: string[];
+  caminhosOriginais: string[];
+};
+
 export type FotoCopiador = {
   copiarParaItem(
     usuarioId: string,
     wishlistId: string,
     itemId: string,
-  ): Promise<void>;
+  ): Promise<ResultadoCopiaFotos>;
   apagarWishlist(usuarioId: string, wishlistId: string): Promise<void>;
+  apagarArquivos(caminhos: string[]): Promise<void>;
 };
 
 export type ComprarExtras = {
@@ -189,31 +195,71 @@ export function fotoCopiadorPrisma(deps: FotoDeps): FotoCopiador {
   return {
     async copiarParaItem(usuarioId, wishlistId, itemId) {
       const fotos = await deps.repo.findManyByDono("WISHLIST", wishlistId);
+      const caminhosNovos: string[] = [];
+      const caminhosOriginais: string[] = [];
       await deps.fs.mkdir(path.join(deps.uploadDir, usuarioId));
-      for (const foto of fotos) {
-        const bytes = await deps.fs.readFile(
-          path.join(deps.uploadDir, foto.caminho),
-        );
-        const id = crypto.randomUUID();
-        const ext = path.extname(foto.caminho);
-        const caminho = `${usuarioId}/${id}${ext}`;
-        await deps.fs.writeFile(path.join(deps.uploadDir, caminho), bytes);
-        await deps.repo.create({
-          id,
-          usuarioId,
-          donoTipo: "ITEM",
-          donoId: itemId,
-          caminho,
-          mime: foto.mime,
-          ordem: foto.ordem,
-          isCapa: foto.isCapa,
-        });
+      try {
+        for (const foto of fotos) {
+          const bytes = await deps.fs.readFile(
+            path.join(deps.uploadDir, foto.caminho),
+          );
+          const id = crypto.randomUUID();
+          const ext = path.extname(foto.caminho);
+          const caminho = `${usuarioId}/${id}${ext}`;
+          await deps.fs.writeFile(path.join(deps.uploadDir, caminho), bytes);
+          caminhosNovos.push(caminho);
+          caminhosOriginais.push(foto.caminho);
+          await deps.repo.create({
+            id,
+            usuarioId,
+            donoTipo: "ITEM",
+            donoId: itemId,
+            caminho,
+            mime: foto.mime,
+            ordem: foto.ordem,
+            isCapa: foto.isCapa,
+          });
+        }
+        return { caminhosNovos, caminhosOriginais };
+      } catch (erro) {
+        await apagarArquivosDisco(deps, caminhosNovos);
+        throw erro;
       }
     },
     async apagarWishlist(usuarioId, wishlistId) {
-      await apagarDono(usuarioId, "WISHLIST", wishlistId, deps);
+      const fotos = await deps.repo.findManyByDono("WISHLIST", wishlistId);
+      for (const foto of fotos) {
+        if (foto.usuarioId !== usuarioId) {
+          continue;
+        }
+        await deps.repo.delete(foto.id);
+      }
+    },
+    async apagarArquivos(caminhos) {
+      await apagarArquivosDisco(deps, caminhos);
     },
   };
+}
+
+async function apagarArquivosDisco(
+  deps: Pick<FotoDeps, "fs" | "uploadDir">,
+  caminhos: string[],
+): Promise<void> {
+  for (const caminho of caminhos) {
+    try {
+      await deps.fs.unlink(path.join(deps.uploadDir, caminho));
+    } catch (erro) {
+      if (
+        typeof erro === "object" &&
+        erro !== null &&
+        "code" in erro &&
+        (erro as { code: unknown }).code === "ENOENT"
+      ) {
+        continue;
+      }
+      throw erro;
+    }
+  }
 }
 
 export function uowComprarPrisma(
@@ -317,37 +363,61 @@ export async function comprarWishlist(
   id: string,
   uow: UnidadeDeTrabalho,
 ): Promise<Item> {
-  return uow.executar(async (repos) => {
-    const wish = await carregarDoDono(usuarioId, id, repos.wishlist);
-    const item = await repos.itens.create({
-      usuarioId: wish.usuarioId,
-      tipoColecao: wish.tipoColecao,
-      nome: wish.nome,
-      descricao: wish.descricao,
-      notasPessoais: wish.notasPessoais,
-      dataAquisicao: null,
-      precoPago: null,
-      tags: [...wish.tags],
-      ficha: { ...wish.ficha },
-    });
-
-    const extrasOrigem = await repos.extras.findManyByAlvo("WISHLIST", wish.id);
-    for (const extra of extrasOrigem) {
-      await repos.extras.upsert({
-        definicaoId: extra.definicaoId,
-        alvoTipo: "ITEM",
-        alvoId: item.id,
-        valorTexto: extra.valorTexto,
-        valorNumero: extra.valorNumero,
+  let caminhosNovos: string[] = [];
+  let caminhosOriginais: string[] = [];
+  let fotos: FotoCopiador | undefined;
+  try {
+    const item = await uow.executar(async (repos) => {
+      fotos = repos.fotos;
+      const wish = await carregarDoDono(usuarioId, id, repos.wishlist);
+      const criado = await repos.itens.create({
+        usuarioId: wish.usuarioId,
+        tipoColecao: wish.tipoColecao,
+        nome: wish.nome,
+        descricao: wish.descricao,
+        notasPessoais: wish.notasPessoais,
+        dataAquisicao: null,
+        precoPago: null,
+        tags: [...wish.tags],
+        ficha: { ...wish.ficha },
       });
-    }
 
-    await repos.fotos.copiarParaItem(usuarioId, wish.id, item.id);
-    await repos.fotos.apagarWishlist(usuarioId, wish.id);
-    await repos.extras.deleteByAlvo("WISHLIST", wish.id);
-    await repos.wishlist.delete(wish.id);
+      const extrasOrigem = await repos.extras.findManyByAlvo(
+        "WISHLIST",
+        wish.id,
+      );
+      for (const extra of extrasOrigem) {
+        await repos.extras.upsert({
+          definicaoId: extra.definicaoId,
+          alvoTipo: "ITEM",
+          alvoId: criado.id,
+          valorTexto: extra.valorTexto,
+          valorNumero: extra.valorNumero,
+        });
+      }
+
+      const copia = await repos.fotos.copiarParaItem(
+        usuarioId,
+        wish.id,
+        criado.id,
+      );
+      caminhosNovos = copia.caminhosNovos;
+      caminhosOriginais = copia.caminhosOriginais;
+      await repos.fotos.apagarWishlist(usuarioId, wish.id);
+      await repos.extras.deleteByAlvo("WISHLIST", wish.id);
+      await repos.wishlist.delete(wish.id);
+      return criado;
+    });
+    await fotos?.apagarArquivos(caminhosOriginais);
     return item;
-  });
+  } catch (erro) {
+    try {
+      await fotos?.apagarArquivos(caminhosNovos);
+    } catch {
+      // não mascara a falha da transação
+    }
+    throw erro;
+  }
 }
 
 async function carregarDoDono(

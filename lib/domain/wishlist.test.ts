@@ -201,7 +201,7 @@ function criarExtrasRepo(
 
 function criarFotoCopiador(
   fotos: FotoCopia[],
-  opcoes?: { falharAoCopiar?: boolean },
+  opcoes?: { falharAoCopiar?: boolean; disco?: Map<string, Uint8Array> },
 ): FotoCopiador {
   return {
     async copiarParaItem(_usuarioId, wishlistId, itemId) {
@@ -211,15 +211,26 @@ function criarFotoCopiador(
       const origem = fotos.filter(
         (foto) => foto.donoTipo === "WISHLIST" && foto.donoId === wishlistId,
       );
+      const caminhosNovos: string[] = [];
+      const caminhosOriginais: string[] = [];
       for (const foto of origem) {
+        const caminhoNovo = `copia/${foto.caminho}`;
+        caminhosNovos.push(caminhoNovo);
+        caminhosOriginais.push(foto.caminho);
+        const disco = opcoes?.disco;
+        if (disco) {
+          const bytes = disco.get(foto.caminho) ?? new Uint8Array();
+          disco.set(caminhoNovo, new Uint8Array(bytes));
+        }
         fotos.push({
           id: `copia-${foto.id}`,
           donoTipo: "ITEM",
           donoId: itemId,
-          caminho: `copia/${foto.caminho}`,
+          caminho: caminhoNovo,
           origemId: foto.id,
         });
       }
+      return { caminhosNovos, caminhosOriginais };
     },
     async apagarWishlist(_usuarioId, wishlistId) {
       for (let i = fotos.length - 1; i >= 0; i -= 1) {
@@ -229,6 +240,15 @@ function criarFotoCopiador(
         ) {
           fotos.splice(i, 1);
         }
+      }
+    },
+    async apagarArquivos(caminhos) {
+      const disco = opcoes?.disco;
+      if (!disco) {
+        return;
+      }
+      for (const caminho of caminhos) {
+        disco.delete(caminho);
       }
     },
   };
@@ -699,6 +719,91 @@ describe("comprarWishlist RN-11 atômico", () => {
         donoTipo: "WISHLIST",
         donoId: wish.id,
       }),
+    ]);
+  });
+
+  it("rollback após copiar no disco preserva originais e limpa as cópias", async () => {
+    const original = `${USUARIO_A}/foto-wish-1.jpg`;
+    const disco = new Map<string, Uint8Array>([
+      [original, new Uint8Array([1, 2, 3])],
+    ]);
+    const mundo = criarMundo();
+    const wish = await criarWishlist(
+      USUARIO_A,
+      { nome: "Sauvage", tipoColecao: "PERFUME" },
+      mundo.wishlist,
+    );
+    mundo.estado.fotos.push({
+      id: "foto-wish-1",
+      donoTipo: "WISHLIST",
+      donoId: wish.id,
+      caminho: original,
+    });
+
+    const fotos = criarFotoCopiador(mundo.estado.fotos, { disco });
+    const uow: UnidadeDeTrabalho = {
+      async executar(trabalho) {
+        const snap = structuredClone(mundo.estado);
+        try {
+          await trabalho({
+            wishlist: mundo.wishlist,
+            itens: mundo.itens,
+            extras: mundo.extras,
+            fotos,
+          });
+          throw new Error("rollback após copiar fotos");
+        } catch (erro) {
+          substituir(mundo.estado.wishlists, snap.wishlists);
+          substituir(mundo.estado.itens, snap.itens);
+          substituir(mundo.estado.extras, snap.extras);
+          substituir(mundo.estado.fotos, snap.fotos);
+          throw erro;
+        }
+      },
+    };
+
+    await expect(
+      comprarWishlist(USUARIO_A, wish.id, uow),
+    ).rejects.toThrow(/rollback após copiar fotos/);
+
+    expect(disco.has(original)).toBe(true);
+    expect([...disco.keys()].filter((caminho) => caminho !== original)).toEqual(
+      [],
+    );
+    expect(mundo.estado.wishlists).toHaveLength(1);
+    expect(mundo.estado.itens).toHaveLength(0);
+  });
+
+  it("após commit, apaga arquivos originais e mantém as cópias", async () => {
+    const original = `${USUARIO_A}/foto-wish-1.jpg`;
+    const disco = new Map<string, Uint8Array>([
+      [original, new Uint8Array([1, 2, 3])],
+    ]);
+    const mundo = criarMundo();
+    const wish = await criarWishlist(
+      USUARIO_A,
+      { nome: "Sauvage", tipoColecao: "PERFUME" },
+      mundo.wishlist,
+    );
+    mundo.estado.fotos.push({
+      id: "foto-wish-1",
+      donoTipo: "WISHLIST",
+      donoId: wish.id,
+      caminho: original,
+    });
+
+    const fotos = criarFotoCopiador(mundo.estado.fotos, { disco });
+    const item = await comprarWishlist(
+      USUARIO_A,
+      wish.id,
+      mundo.uowComFotos(fotos),
+    );
+
+    expect(disco.has(original)).toBe(false);
+    expect([...disco.keys()]).toEqual([`copia/${original}`]);
+    expect(mundo.estado.wishlists).toHaveLength(0);
+    expect(mundo.estado.itens).toEqual([
+      expect.objectContaining({ id: item.id }),
     ]);
   });
 });
