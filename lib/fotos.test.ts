@@ -18,6 +18,7 @@ import {
   fotoFsDisco,
   marcarCapa,
   respostaGetFoto,
+  type DonoRepo,
   type Foto,
   type FotoDados,
   type FotoDeps,
@@ -97,6 +98,49 @@ function criarRepoEmMemoria(iniciais: Foto[] = []): FotoRepo & { fotos: Foto[] }
   };
 }
 
+function criarDonoRepoEmMemoria(): DonoRepo & {
+  registrarItem(id: string, usuarioId: string): void;
+  registrarWishlist(id: string, usuarioId: string): void;
+  registrarBuild(id: string, usuarioId: string): void;
+  registrarPeca(id: string, buildId: string): void;
+} {
+  const itens = new Map<string, string>();
+  const wishlists = new Map<string, string>();
+  const builds = new Map<string, string>();
+  const pecas = new Map<string, string>();
+
+  return {
+    registrarItem(id, usuarioId) {
+      itens.set(id, usuarioId);
+    },
+    registrarWishlist(id, usuarioId) {
+      wishlists.set(id, usuarioId);
+    },
+    registrarBuild(id, usuarioId) {
+      builds.set(id, usuarioId);
+    },
+    registrarPeca(id, buildId) {
+      pecas.set(id, buildId);
+    },
+    async findItem(id) {
+      const usuarioId = itens.get(id);
+      return usuarioId ? { usuarioId } : null;
+    },
+    async findWishlist(id) {
+      const usuarioId = wishlists.get(id);
+      return usuarioId ? { usuarioId } : null;
+    },
+    async findBuild(id) {
+      const usuarioId = builds.get(id);
+      return usuarioId ? { usuarioId } : null;
+    },
+    async findPeca(id) {
+      const buildId = pecas.get(id);
+      return buildId ? { buildId } : null;
+    },
+  };
+}
+
 function criarItemRepoEmMemoria(): ItemRepo & { itens: Item[] } {
   const itens: Item[] = [];
   let sequencia = 0;
@@ -159,6 +203,7 @@ async function expectHttpErro(
 describe("API de fotos", () => {
   let uploadDir = "";
   let repo: ReturnType<typeof criarRepoEmMemoria>;
+  let donos: ReturnType<typeof criarDonoRepoEmMemoria>;
   let deps: FotoDeps;
 
   afterEach(async () => {
@@ -167,10 +212,14 @@ describe("API de fotos", () => {
     }
   });
 
-  async function preparar(): Promise<FotoDeps> {
+  async function preparar(
+    donoUsuarioId: string = USUARIO_A,
+  ): Promise<FotoDeps> {
     uploadDir = await mkdtemp(path.join(tmpdir(), "fotos-"));
     repo = criarRepoEmMemoria();
-    deps = { repo, fs: fotoFsDisco(), uploadDir };
+    donos = criarDonoRepoEmMemoria();
+    donos.registrarItem(DONO_ID, donoUsuarioId);
+    deps = { repo, fs: fotoFsDisco(), uploadDir, donos };
     return deps;
   }
 
@@ -247,7 +296,7 @@ describe("API de fotos", () => {
   });
 
   it("GET de foto de outro usuário devolve 404", async () => {
-    await preparar();
+    await preparar(USUARIO_B);
     const foto = await enviarFoto(
       USUARIO_B,
       { donoTipo: "ITEM", donoId: DONO_ID, arquivo: JPEG },
@@ -280,6 +329,38 @@ describe("API de fotos", () => {
       /12|limite|máximo/i,
     );
     expect(repo.fotos).toHaveLength(12);
+  });
+
+  it("recusa foto em item de outro usuário com 404", async () => {
+    await preparar(USUARIO_B);
+
+    await expectHttpErro(
+      enviarFoto(
+        USUARIO_A,
+        { donoTipo: "ITEM", donoId: DONO_ID, arquivo: JPEG },
+        deps,
+      ),
+      404,
+      /não encontrado/i,
+    );
+    expect(repo.fotos).toHaveLength(0);
+  });
+
+  it("recusa foto em peça cujo build é de outro usuário com 404", async () => {
+    await preparar();
+    donos.registrarBuild("build-b", USUARIO_B);
+    donos.registrarPeca(DONO_ID, "build-b");
+
+    await expectHttpErro(
+      enviarFoto(
+        USUARIO_A,
+        { donoTipo: "PECA", donoId: DONO_ID, arquivo: JPEG },
+        deps,
+      ),
+      404,
+      /não encontrado/i,
+    );
+    expect(repo.fotos).toHaveLength(0);
   });
 
   it("rejeita mime não permitido e arquivo acima de 10 MB", async () => {
@@ -322,6 +403,7 @@ describe("API de fotos", () => {
       { nome: "Sauvage", tipoColecao: "PERFUME" },
       itemRepo,
     );
+    donos.registrarItem(item.id, USUARIO_A);
 
     const foto = await enviarFoto(
       USUARIO_A,

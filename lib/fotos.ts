@@ -52,10 +52,22 @@ export type FotoFs = {
   unlink(caminho: string): Promise<void>;
 };
 
+export type DonoRecurso = {
+  usuarioId: string;
+};
+
+export type DonoRepo = {
+  findItem(id: string): Promise<DonoRecurso | null>;
+  findWishlist(id: string): Promise<DonoRecurso | null>;
+  findBuild(id: string): Promise<DonoRecurso | null>;
+  findPeca(id: string): Promise<{ buildId: string } | null>;
+};
+
 export type FotoDeps = {
   repo: FotoRepo;
   fs: FotoFs;
   uploadDir: string;
+  donos: DonoRepo;
 };
 
 export type FotoUploadInput = {
@@ -151,14 +163,59 @@ export function fotoRepoPrisma(prisma: { foto: object }): FotoRepo {
   };
 }
 
+type PrismaDonoDelegate = {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<{ usuarioId: string } | null>;
+};
+
+type PrismaPecaDelegate = {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<{ buildId: string } | null>;
+};
+
+export function donoRepoPrisma(prisma: {
+  item: object;
+  wishlistItem: object;
+  build: object;
+  buildPeca: object;
+}): DonoRepo {
+  const item = prisma.item as PrismaDonoDelegate;
+  const wishlistItem = prisma.wishlistItem as PrismaDonoDelegate;
+  const build = prisma.build as PrismaDonoDelegate;
+  const buildPeca = prisma.buildPeca as PrismaPecaDelegate;
+  return {
+    findItem(id) {
+      return item.findUnique({ where: { id } });
+    },
+    findWishlist(id) {
+      return wishlistItem.findUnique({ where: { id } });
+    },
+    findBuild(id) {
+      return build.findUnique({ where: { id } });
+    },
+    findPeca(id) {
+      return buildPeca.findUnique({ where: { id } });
+    },
+  };
+}
+
 export function depsFotos(
-  prisma: { foto: object },
+  prisma: {
+    foto: object;
+    item: object;
+    wishlistItem: object;
+    build: object;
+    buildPeca: object;
+  },
   uploadDir = diretorioUpload(),
 ): FotoDeps {
   return {
     repo: fotoRepoPrisma(prisma),
     fs: fotoFsDisco(),
     uploadDir,
+    donos: donoRepoPrisma(prisma),
   };
 }
 
@@ -174,6 +231,7 @@ export async function enviarFoto(
   if (bytes.byteLength > TAMANHO_MAX_BYTES) {
     throw new HttpErro(400, "O arquivo excede 10 MB.");
   }
+  await assertDonoRecurso(usuarioId, donoTipo, donoId, deps.donos);
 
   const quantidade = await deps.repo.countByDono(donoTipo, donoId);
   if (quantidade >= MAX_FOTOS_POR_DONO) {
@@ -279,6 +337,37 @@ export function responderErroFoto(erro: unknown): Response {
     return Response.json({ erro: erro.mensagem }, { status: erro.status });
   }
   throw erro;
+}
+
+export async function assertDonoRecurso(
+  usuarioId: string,
+  donoTipo: DonoFotoTipo,
+  donoId: string,
+  donos: DonoRepo,
+): Promise<void> {
+  if (donoTipo === "PECA") {
+    const peca = await donos.findPeca(donoId);
+    if (!peca) {
+      throw new HttpErro(404, "Recurso não encontrado.");
+    }
+    const build = await donos.findBuild(peca.buildId);
+    if (!build) {
+      throw new HttpErro(404, "Recurso não encontrado.");
+    }
+    assertDono(usuarioId, build.usuarioId);
+    return;
+  }
+
+  const recurso =
+    donoTipo === "ITEM"
+      ? await donos.findItem(donoId)
+      : donoTipo === "WISHLIST"
+        ? await donos.findWishlist(donoId)
+        : await donos.findBuild(donoId);
+  if (!recurso) {
+    throw new HttpErro(404, "Recurso não encontrado.");
+  }
+  assertDono(usuarioId, recurso.usuarioId);
 }
 
 async function carregarDoDono(
