@@ -5,6 +5,12 @@ import {
 } from "./domain/colecoes";
 import { parsearConsultaBusca } from "./domain/busca";
 import { METADADOS_FICHA_ITEM, schemasFichaItem } from "./domain/fichas-item";
+import {
+  rotuloCampoFicha,
+  rotuloValorFicha,
+} from "./domain/rotulos-ficha";
+
+export { rotuloCampoFicha, rotuloValorFicha };
 
 export type CampoFiltroUI = {
   campo: string;
@@ -26,93 +32,6 @@ const CAMPOS_CHAVE: Record<TipoColecaoItem, readonly [string, string]> = {
   MANGA: ["obra", "volume"],
   LIVRO: ["autor", "editora"],
   GADGET: ["marca", "tipo_aparelho"],
-};
-
-const ROTULOS_CAMPO: Record<string, string> = {
-  marca: "Marca",
-  linha: "Linha",
-  colorway: "Colorway",
-  sku: "SKU",
-  tamanho: "Tamanho",
-  ano: "Ano",
-  condicao: "Condição",
-  colaboracao: "Colaboração",
-  destilaria: "Destilaria",
-  regiao: "Região",
-  idade_anos: "Idade (anos)",
-  abv: "ABV",
-  tipo_barril: "Tipo de barril",
-  engarrafador: "Engarrafador",
-  volume_ml: "Volume (ml)",
-  nivel_restante: "Nível restante",
-  notas_degustacao: "Notas de degustação",
-  nota_pessoal: "Nota pessoal",
-  casa: "Casa",
-  concentracao: "Concentração",
-  perfumista: "Perfumista",
-  notas_topo: "Notas de topo",
-  notas_coracao: "Notas de coração",
-  notas_base: "Notas de base",
-  ocasiao: "Ocasião",
-  restante: "Restante",
-  set_edicao: "Set / edição",
-  codigo: "Código",
-  raridade: "Raridade",
-  idioma: "Idioma",
-  quantidade: "Quantidade",
-  tipo_carta: "Tipo de carta",
-  atributo: "Atributo",
-  nivel: "Nível",
-  atk: "ATK",
-  def: "DEF",
-  obra: "Obra",
-  volume: "Volume",
-  autor: "Autor",
-  artista: "Artista",
-  editora: "Editora",
-  status_obra: "Status da obra",
-  isbn: "ISBN",
-  edicao: "Edição",
-  formato: "Formato",
-  status_leitura: "Status de leitura",
-  tipo_aparelho: "Tipo de aparelho",
-  modelo: "Modelo",
-  capacidade: "Capacidade",
-  acessorios: "Acessórios",
-};
-
-const ROTULOS_VALOR: Record<string, string> = {
-  NOVO: "Novo",
-  USADO: "Usado",
-  DANIFICADO: "Danificado",
-  OFICIAL: "Oficial",
-  INDEPENDENTE: "Independente",
-  CHEIO: "Cheio",
-  MAIORIA: "Maioria",
-  METADE: "Metade",
-  POUCO: "Pouco",
-  VAZIO: "Vazio",
-  EDC: "EDC",
-  EDT: "EDT",
-  EDP: "EDP",
-  PARFUM: "Parfum",
-  EXTRAT: "Extrait",
-  OUTRO: "Outro",
-  MINT: "Mint",
-  NM: "NM",
-  LP: "LP",
-  MP: "MP",
-  HP: "HP",
-  EM_ANDAMENTO: "Em andamento",
-  COMPLETA: "Completa",
-  HIATO: "Hiato",
-  CAPA_DURA: "Capa dura",
-  BROCHURA: "Brochura",
-  BOLSO: "Bolso",
-  EBOOK: "E-book",
-  NAO_LIDO: "Não lido",
-  LENDO: "Lendo",
-  LIDO: "Lido",
 };
 
 type SchemaCampo = {
@@ -198,14 +117,6 @@ export function valoresChaveLista(
     }
     return [{ rotulo: rotuloCampoFicha(campo), valor: String(bruto) }];
   });
-}
-
-export function rotuloCampoFicha(campo: string): string {
-  return ROTULOS_CAMPO[campo] ?? campo;
-}
-
-export function rotuloValorFicha(valor: string): string {
-  return ROTULOS_VALOR[valor] ?? valor;
 }
 
 function montarCampoFiltro(
