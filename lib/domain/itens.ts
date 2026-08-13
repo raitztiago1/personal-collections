@@ -151,8 +151,12 @@ export async function excluirItem(
   id: string,
   repo: ItemRepo,
   limparFotos?: (usuarioId: string, donoId: string) => Promise<void>,
+  antesDeExcluir?: (usuarioId: string, itemId: string) => Promise<void>,
 ): Promise<void> {
   await carregarDoDono(usuarioId, id, repo);
+  if (antesDeExcluir) {
+    await antesDeExcluir(usuarioId, id);
+  }
   if (limparFotos) {
     await limparFotos(usuarioId, id);
   }

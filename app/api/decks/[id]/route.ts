@@ -1,25 +1,17 @@
 import { prisma } from "@/lib/db";
 import {
-  atualizarItemComExtras,
-  campoExtraReposPrisma,
-  obterItemComExtras,
-} from "@/lib/domain/campos-extra";
-import {
+  atualizarDeck,
   deckRepoPrisma,
-  garantirItemPodeSerExcluido,
+  excluirDeck,
+  obterDeck,
+  type DeckInput,
 } from "@/lib/domain/decks";
-import {
-  excluirItem,
-  itemRepoPrisma,
-  type ItemInput,
-} from "@/lib/domain/itens";
-import { apagarDono, depsFotos } from "@/lib/fotos";
+import { itemRepoPrisma } from "@/lib/domain/itens";
 import { HttpErro } from "@/lib/isolamento";
 import { requireUser } from "@/lib/session";
 
-const repo = itemRepoPrisma(prisma);
-const extras = campoExtraReposPrisma(prisma);
 const decks = deckRepoPrisma(prisma);
+const itens = itemRepoPrisma(prisma);
 
 type ContextoRota = {
   params: Promise<{ id: string }>;
@@ -29,8 +21,7 @@ export async function GET(_request: Request, contexto: ContextoRota) {
   try {
     const { id: usuarioId } = await requireUser();
     const { id } = await contexto.params;
-    const item = await obterItemComExtras(usuarioId, id, repo, extras);
-    return Response.json(item);
+    return Response.json(await obterDeck(usuarioId, id, decks));
   } catch (erro) {
     return responderErro(erro);
   }
@@ -40,14 +31,14 @@ export async function PATCH(request: Request, contexto: ContextoRota) {
   try {
     const { id: usuarioId } = await requireUser();
     const { id } = await contexto.params;
-    const item = await atualizarItemComExtras(
+    const deck = await atualizarDeck(
       usuarioId,
       id,
       await lerCorpo(request),
-      repo,
-      extras,
+      decks,
+      itens,
     );
-    return Response.json(item);
+    return Response.json(deck);
   } catch (erro) {
     return responderErro(erro);
   }
@@ -57,20 +48,14 @@ export async function DELETE(_request: Request, contexto: ContextoRota) {
   try {
     const { id: usuarioId } = await requireUser();
     const { id } = await contexto.params;
-    await excluirItem(
-      usuarioId,
-      id,
-      repo,
-      (uid, donoId) => apagarDono(uid, "ITEM", donoId, depsFotos(prisma)),
-      (uid, itemId) => garantirItemPodeSerExcluido(uid, itemId, decks),
-    );
+    await excluirDeck(usuarioId, id, decks);
     return new Response(null, { status: 204 });
   } catch (erro) {
     return responderErro(erro);
   }
 }
 
-async function lerCorpo(request: Request): Promise<ItemInput> {
+async function lerCorpo(request: Request): Promise<DeckInput> {
   let payload: unknown;
   try {
     payload = await request.json();
@@ -80,7 +65,7 @@ async function lerCorpo(request: Request): Promise<ItemInput> {
   if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
     throw new HttpErro(400, "JSON inválido.");
   }
-  return payload as ItemInput;
+  return payload as DeckInput;
 }
 
 function responderErro(erro: unknown): Response {
