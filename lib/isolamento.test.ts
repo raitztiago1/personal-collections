@@ -10,6 +10,7 @@ import {
   deveRedirecionarParaLogin,
   eRotaPublica,
   HttpErro,
+  opcoesGetTokenSessao,
 } from "./isolamento";
 import { requireUser } from "./session";
 
@@ -105,5 +106,69 @@ describe("rotas públicas e redirecionamento de anônimo", () => {
   it("não redireciona usuário autenticado", () => {
     expect(deveRedirecionarParaLogin("/", true)).toBe(false);
     expect(deveRedirecionarParaLogin("/itens", true)).toBe(false);
+  });
+});
+
+describe("opcoesGetTokenSessao", () => {
+  it("usa cookie e salt __Secure-authjs.session-token em HTTPS", () => {
+    expect(
+      opcoesGetTokenSessao({ protocol: "https:" }),
+    ).toEqual({
+      secureCookie: true,
+      cookieName: "__Secure-authjs.session-token",
+    });
+  });
+
+  it("usa cookie e salt authjs.session-token em HTTP local", () => {
+    expect(
+      opcoesGetTokenSessao({ protocol: "http:", nodeEnv: "development" }),
+    ).toEqual({
+      secureCookie: false,
+      cookieName: "authjs.session-token",
+    });
+  });
+
+  it("respeita x-forwarded-proto quando o app está atrás de proxy TLS", () => {
+    expect(
+      opcoesGetTokenSessao({
+        protocol: "http:",
+        forwardedProto: "https",
+        nodeEnv: "production",
+      }),
+    ).toEqual({
+      secureCookie: true,
+      cookieName: "__Secure-authjs.session-token",
+    });
+  });
+
+  it("escolhe o cookie presente no request para o salt bater com o encode do Auth.js", () => {
+    expect(
+      opcoesGetTokenSessao({
+        protocol: "http:",
+        cookieHeader: "__Secure-authjs.session-token=jwt-criptografado",
+        nodeEnv: "development",
+      }),
+    ).toEqual({
+      secureCookie: true,
+      cookieName: "__Secure-authjs.session-token",
+    });
+
+    expect(
+      opcoesGetTokenSessao({
+        protocol: "https:",
+        cookieHeader: "authjs.session-token=jwt-criptografado",
+        nodeEnv: "production",
+      }),
+    ).toEqual({
+      secureCookie: false,
+      cookieName: "authjs.session-token",
+    });
+  });
+
+  it("em produção sem protocolo conhecido assume prefixo __Secure-", () => {
+    expect(opcoesGetTokenSessao({ nodeEnv: "production" })).toEqual({
+      secureCookie: true,
+      cookieName: "__Secure-authjs.session-token",
+    });
   });
 });

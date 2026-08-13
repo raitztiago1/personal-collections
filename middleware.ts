@@ -1,11 +1,22 @@
 import { getToken } from "next-auth/jwt";
 import { NextResponse, type NextRequest } from "next/server";
-import { deveRedirecionarParaLogin } from "@/lib/isolamento";
+import {
+  deveRedirecionarParaLogin,
+  opcoesGetTokenSessao,
+} from "@/lib/isolamento";
 
 export async function middleware(request: NextRequest) {
+  const { secureCookie, cookieName } = opcoesGetTokenSessao({
+    protocol: request.nextUrl.protocol,
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+    cookieHeader: request.headers.get("cookie"),
+    nodeEnv: process.env.NODE_ENV,
+  });
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,
+    secureCookie,
+    cookieName,
   });
   const autenticado =
     typeof token?.id === "string" || typeof token?.sub === "string";
