@@ -102,7 +102,7 @@ type PrismaFotoDelegate = {
 };
 
 export function diretorioUpload(
-  env: { UPLOAD_DIR?: string } = process.env,
+  env: { UPLOAD_DIR?: string } = { UPLOAD_DIR: process.env.UPLOAD_DIR },
 ): string {
   const valor = env.UPLOAD_DIR?.trim();
   return valor ? valor : "data/uploads";
@@ -323,7 +323,7 @@ export async function respostaGetFoto(
 ): Promise<Response> {
   try {
     const arquivo = await servirFoto(usuarioId, fotoId, deps);
-    return new Response(arquivo.bytes, {
+    return new Response(new Uint8Array(arquivo.bytes), {
       status: 200,
       headers: { "Content-Type": arquivo.mime },
     });

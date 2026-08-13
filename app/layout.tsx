@@ -8,8 +8,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="pt-BR">
-      <body>{children}</body>
+    <html lang="pt-BR" className="overflow-x-hidden">
+      <body className="min-h-dvh overflow-x-hidden bg-zinc-50 text-zinc-900 antialiased">
+        {children}
+      </body>
     </html>
   );
 }
