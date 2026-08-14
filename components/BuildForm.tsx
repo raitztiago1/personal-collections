@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { pecasMudaram } from "@/lib/domain/pecas-iguais";
 import { FotoGaleria, type FotoResumo } from "./FotoGaleria";
 import {
   montarPecaPayload,
@@ -296,24 +297,6 @@ export function BuildForm({
       ) : null}
     </div>
   );
-}
-
-function pecasMudaram(originais: PecaResumo[], atuais: PecaPayload[]): boolean {
-  if (originais.length !== atuais.length) {
-    return true;
-  }
-  return originais.some((original, indice) => {
-    const atual = atuais[indice];
-    if (!atual) {
-      return true;
-    }
-    return (
-      original.tipoPeca !== atual.tipoPeca ||
-      original.nome !== atual.nome ||
-      (original.notas ?? null) !== atual.notas ||
-      JSON.stringify(original.ficha) !== JSON.stringify(atual.ficha)
-    );
-  });
 }
 
 async function lerErro(resposta: Response, fallback: string): Promise<string> {

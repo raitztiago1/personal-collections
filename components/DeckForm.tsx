@@ -130,13 +130,12 @@ export function DeckForm({
     }
 
     for (const carta of cartas) {
-      const item = porId.get(carta.itemId);
-      const estoque = item ? estoqueDaCarta(item) : 1;
       if (!Number.isInteger(carta.quantidade) || carta.quantidade < 1) {
         setErro("A quantidade da carta deve ser no mínimo 1.");
         return;
       }
-      if (carta.quantidade > estoque) {
+      const item = porId.get(carta.itemId);
+      if (item && carta.quantidade > estoqueDaCarta(item)) {
         setErro(ERRO_ESTOQUE);
         return;
       }
