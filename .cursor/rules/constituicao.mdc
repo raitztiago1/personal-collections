@@ -1,0 +1,111 @@
+---
+description: Stack, comandos de teste e convenções do projeto Catálogo de Coleções Pessoais
+alwaysApply: true
+---
+
+# Constituição — Catálogo de Coleções Pessoais
+
+Referência de contexto para skills spec-driven e implementação neste workspace.
+
+## Stack
+
+| Camada | Tecnologia |
+|--------|------------|
+| App | Next.js 16 (App Router), React 19, TypeScript 5, Tailwind 4 |
+| Banco | PostgreSQL 16 (`docker-compose.yml`: user/password/db `catalogo`, porta 5432) |
+| ORM | Prisma 7 (`prisma.config.ts`, `@prisma/adapter-pg`) |
+| Client Prisma | gerado em `generated/` (gitignored) — obrigatório `npx prisma generate` após clonar |
+| Auth | Auth.js (`next-auth` v5 beta), Credentials, cookie JWT, `AUTH_SECRET` |
+| Testes de domínio | Vitest (`npm test`) |
+| Validação | Zod 4 |
+
+## Estrutura principal
+
+```text
+app/
+  (main)/          páginas autenticadas (home, busca, coleções)
+  api/             rotas REST
+  login/  register/
+lib/
+  domain/          regras + testes Vitest
+  db.ts            PrismaClient singleton (adapter-pg)
+  auth-register.ts isolamento.ts  fotos.ts  session.ts
+prisma/            schema.prisma + migrations/
+generated/         client Prisma (não versionar)
+specs/catalogo-colecoes-pessoais/about.md
+ideas/catalogo-colecoes-pessoais.md
+```
+
+## Comandos de verificação
+
+```powershell
+npm test
+npm run lint
+npm run build
+npx prisma migrate deploy
+npx prisma generate
+```
+
+Não existe `mvnw` neste projeto. Verificação é sempre npm + Prisma.
+
+## Execução local
+
+```powershell
+docker compose up -d
+copy .env.example .env   # definir AUTH_SECRET (obrigatório)
+npx prisma generate
+npx prisma migrate deploy
+npm run dev              # http://localhost:3000
+```
+
+Primeiro uso: abrir `/register` e criar a conta. Depois disso, `ALLOW_REGISTRATION=false` impede novos cadastros (login das contas existentes segue).
+
+## Variáveis de ambiente
+
+| Variável | Função |
+|----------|--------|
+| `DATABASE_URL` | Postgres (compose local: `postgresql://catalogo:catalogo@localhost:5432/catalogo`) |
+| `AUTH_SECRET` | Segredo Auth.js — **obrigatório**; não commitar valor real |
+| `ALLOW_REGISTRATION` | `true` (padrão) ou `false` para fechar cadastro (RN-10) |
+| `UPLOAD_DIR` | Pasta de fotos; padrão `data/uploads` (gitignored) |
+
+Copiar `.env.example` → `.env`. Sem `AUTH_SECRET` a sessão não sobe.
+
+## Busca e índices (RNF-08)
+
+- Migration inicial cria índice **GIN** em `item.ficha` e tenta `CREATE EXTENSION unaccent` (contrib da imagem `postgres:16`).
+- T09 **não** usa `unaccent` no SQL: a busca dobra acentos em JavaScript (`normalize("NFD")` + strip de marcas) e filtra em memória após listar itens do usuário.
+- Se o Postgres não tiver `unaccent` (Postgres sem contrib, não-Docker), a migration só emite NOTICE e segue. O fallback de busca já é o accent-fold em JS.
+
+## Regras de negócio críticas
+
+- **Isolamento**: todo dado é por `usuarioId`. Segundo usuário não vê o catálogo do primeiro.
+- **Wishlist ≠ inventário**: desejados não aparecem como possuídos; “Já comprei” migra para `item`.
+- **Decks Yu-Gi-Oh!**: só cartas possuídas; quantidade ≤ estoque da carta.
+- **Fichas**: schema Zod por tipo; chave desconhecida falha; `{}` é válido (RN-02).
+- **Fotos**: jpeg/png/webp, máx. 10 MB e 12 por dono; anônimo não acessa o arquivo.
+- **Idioma** da UI e mensagens: **português (Brasil)** (`lang="pt-BR"`).
+
+## Convenções de código
+
+- Domínio em `lib/domain/`; rotas em `app/api/` só orquestram sessão + domínio.
+- Testes Vitest ao lado do módulo (`*.test.ts`). TDD em mudanças de comportamento.
+- Commits e PRs: só quando o humano pedir explicitamente.
+
+## Gates antes de "pronto"
+
+1. `npm test` verde.
+2. `npm run lint` verde.
+3. `npm run build` verde.
+4. Feature com spec: validar contra `specs/<feature>/about.md` com skill `spec-validator`.
+5. Smoke manual (10 itens) está no README e em `specs/catalogo-colecoes-pessoais/about.md` — execução humana.
+
+## Artefactos spec-driven (paths relativos ao workspace)
+
+| Artefacto | Path |
+|-----------|------|
+| Ideia | `ideas/[nome].md` |
+| Spec | `specs/[feature]/about.md` |
+| Plano | `specs/[feature]/plan.md` |
+| Review compliance | `reviews/[feature]-YYYY-MM-DD.md` |
+| Progresso SDD | `.cursor/sdd/progress.md` |

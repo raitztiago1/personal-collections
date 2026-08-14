@@ -1,0 +1,88 @@
+---
+description: Fluxo spec-driven + debugging sistemático para features e bugs não triviais
+alwaysApply: true
+---
+
+# Fluxo Spec-Driven + Debugging Sistemático
+
+Para trabalho não trivial neste projeto, seguir o fluxo abaixo.
+Paths são relativos ao workspace. Stack e testes: ver `constituicao.mdc`.
+
+Se existir ≥1% de chance de uma skill se aplicar, ler o `SKILL.md` em
+`~/.cursor/skills/<nome>/SKILL.md` e seguir antes de agir.
+Anunciar: "Estou usando a skill **[nome]** para **[propósito]**."
+
+## Fluxo principal
+
+1. **Idea Refine** (`idea-refine`) — ideia vaga / brainstorm
+   → salvar `ideas/[nome].md`
+   → só avançar com status "Aprovada para spec"
+
+2. **Spec Writer** (`spec-writer`) — requisitos concretos
+   → `specs/[feature-kebab]/about.md`
+   → fases: descoberta → rascunho → aprovação humana
+   → NÃO avançar sem aprovação explícita
+
+3. **Spec Planner** (`spec-planner`) — plano com tasks atômicas
+   → `specs/[feature]/plan.md`
+   → cada task: RF coberto, arquivos, critério de aceite, comando de verificação
+   → tasks ≤ ~2h; maiores → quebrar
+   → NÃO implementar sem plano aprovado
+
+4. **Implementação**
+   - Preferir `subagent-driven-development` (mesma sessão, um subagente por task)
+   - Alternativa: `executing-plans` (sessão dedicada ao plano)
+   - Por task de código: `test-driven-development` (teste falhando → mínimo código → verde)
+
+5. **Spec Validator** (`spec-validator`) — antes de dizer "pronto" / PR
+   → checklist RFs, RNs, critérios de aceite com evidência
+   → relatório em `reviews/[feature]-YYYY-MM-DD.md`
+
+## Systematic Debugging (obrigatório em bugs)
+
+Usar `systematic-debugging` perante: bug, teste falhando, comportamento inesperado,
+performance, build/integração. **ANTES de propor qualquer fix.**
+
+Lei de ferro: NÃO CORRIGIR SEM INVESTIGAÇÃO DE CAUSA RAIZ.
+
+## Router (qual skill?)
+
+| Situação | Skill |
+|----------|--------|
+| Ideia vaga / brainstorm | idea-refine |
+| Escrever spec / about.md | spec-writer |
+| Plano / tasks / plan.md | spec-planner |
+| Bug / falha / inesperado | systematic-debugging |
+| Implementar código | test-driven-development |
+| Executar plan.md | subagent-driven-development (preferido) ou executing-plans |
+| Validar vs spec / pronto para PR? | spec-validator |
+| Dúvida no início | using-spec-workflow |
+
+## Frases de ativação
+
+- "refina esta ideia" / "brainstorm" / "será que faz sentido"
+- "escreve a spec" / "criar about.md" / "especificar feature"
+- "faz o plan" / "quebrar em tasks" / "gerar plan.md"
+- "implementa o plano" / "executa a T01" / "subagent-driven"
+- "valida contra a spec" / "spec compliance" / "está pronto para PR?"
+- "debug sistemático" / "não corrige sem causa raiz" / "investiga antes de corrigir"
+
+## Atalhos para este projeto
+
+- Fix pequeno (1 arquivo, requisito óbvio): pode ir direto ao código ou `spec-writer` enxuto.
+- Feature que toca domínio + API + UI + banco: fluxo completo (ideia → spec → plan → implementar).
+- Verificação (não há Maven/`mvnw` neste repo):
+
+```powershell
+npm test
+npm run lint
+npm run build
+npx prisma migrate deploy
+npx prisma generate
+```
+
+## Regras de ouro
+
+- Clareza antes de código. Spec é contrato; o que não está na spec não é oficial.
+- Gates humanos: aprovar ideia → aprovar about.md → aprovar plan.md → implementar.
+- Em bugs: evidência primeiro; nunca "quick fix" sem Phase 1.
