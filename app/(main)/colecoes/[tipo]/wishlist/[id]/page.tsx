@@ -4,19 +4,19 @@ import { auth } from "@/auth";
 import { FichaForm } from "@/components/FichaForm";
 import { FichaView } from "@/components/FichaView";
 import { prisma } from "@/lib/db";
-import {
-  campoExtraReposPrisma,
-  obterItemComExtras,
-} from "@/lib/domain/campos-extra";
+import { campoExtraReposPrisma } from "@/lib/domain/campos-extra";
 import type { TipoColecaoItem } from "@/lib/domain/colecoes";
-import { itemRepoPrisma } from "@/lib/domain/itens";
+import {
+  obterWishlistComExtras,
+  wishlistRepoPrisma,
+} from "@/lib/domain/wishlist";
 import { depsFotos } from "@/lib/fotos";
 import { HttpErro } from "@/lib/isolamento";
 import { colecaoPorSlug } from "@/lib/query-filtros";
 
 export const dynamic = "force-dynamic";
 
-export default async function ItemPage({
+export default async function WishlistItemPage({
   params,
 }: {
   params: Promise<{ tipo: string; id: string }>;
@@ -35,12 +35,12 @@ export default async function ItemPage({
 
   const tipoColecao = colecao.tipoColecao as TipoColecaoItem;
 
-  let item;
+  let wish;
   try {
-    item = await obterItemComExtras(
+    wish = await obterWishlistComExtras(
       usuarioId,
       id,
-      itemRepoPrisma(prisma),
+      wishlistRepoPrisma(prisma),
       campoExtraReposPrisma(prisma),
     );
   } catch (erro) {
@@ -50,55 +50,54 @@ export default async function ItemPage({
     throw erro;
   }
 
-  if (item.tipoColecao !== tipoColecao) {
+  if (wish.tipoColecao !== tipoColecao) {
     notFound();
   }
 
-  const fotos = await depsFotos(prisma).repo.findManyByDono("ITEM", item.id);
-  const dataAquisicao = item.dataAquisicao
-    ? item.dataAquisicao.toISOString().slice(0, 10)
-    : null;
+  const fotos = await depsFotos(prisma).repo.findManyByDono(
+    "WISHLIST",
+    wish.id,
+  );
 
   return (
     <main className="mx-auto w-full max-w-3xl min-w-0 px-4 py-6">
       <p className="text-sm">
         <Link
-          href={`/colecoes/${colecao.slug}`}
+          href={`/colecoes/${colecao.slug}/wishlist`}
           className="font-medium text-zinc-700 underline"
         >
-          ← {colecao.rotulo}
+          ← Wishlist · {colecao.rotulo}
         </Link>
       </p>
       <h1 className="mt-3 min-w-0 break-words text-xl font-semibold tracking-tight">
-        {item.nome}
+        {wish.nome}
       </h1>
 
       <FichaView
-        tipoColecao={item.tipoColecao}
-        ficha={item.ficha}
-        descricao={item.descricao}
-        notasPessoais={item.notasPessoais}
-        dataAquisicao={dataAquisicao}
-        precoPago={item.precoPago}
-        tags={item.tags}
-        extras={item.extras}
+        tipoColecao={wish.tipoColecao}
+        ficha={wish.ficha}
+        descricao={wish.descricao}
+        notasPessoais={wish.notasPessoais}
+        tags={wish.tags}
+        extras={wish.extras}
       />
 
       <FichaForm
-        key={item.id}
-        tipoColecao={item.tipoColecao}
+        key={wish.id}
+        tipoColecao={wish.tipoColecao}
         slug={colecao.slug}
-        itemId={item.id}
+        itemId={wish.id}
+        modo="wishlist"
         inicial={{
-          nome: item.nome,
-          descricao: item.descricao,
-          notasPessoais: item.notasPessoais,
-          dataAquisicao,
-          precoPago: item.precoPago,
-          tags: item.tags,
-          ficha: item.ficha,
+          nome: wish.nome,
+          descricao: wish.descricao,
+          notasPessoais: wish.notasPessoais,
+          dataAquisicao: null,
+          precoPago: null,
+          tags: wish.tags,
+          ficha: wish.ficha,
         }}
-        extrasIniciais={item.extras}
+        extrasIniciais={wish.extras}
         fotosIniciais={fotos.map((foto) => ({
           id: foto.id,
           isCapa: foto.isCapa,

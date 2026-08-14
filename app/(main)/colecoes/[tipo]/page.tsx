@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CamposExtraEditor } from "@/components/CamposExtraEditor";
 import { FiltrosColecao } from "@/components/FiltrosColecao";
 import { ListaItens } from "@/components/ListaItens";
 import { colecaoPorSlug, parsearQueryLista } from "@/lib/query-filtros";
@@ -51,12 +52,18 @@ export default async function ColecaoPage({
         </>
       ) : (
         <>
-          <div className="mt-3">
+          <div className="mt-3 flex min-w-0 flex-wrap gap-2">
             <Link
               href={`/colecoes/${colecao.slug}/itens/novo`}
               className="inline-flex rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
             >
               Novo item
+            </Link>
+            <Link
+              href={`/colecoes/${colecao.slug}/wishlist`}
+              className="inline-flex rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium"
+            >
+              Wishlist
             </Link>
           </div>
           <div className="mt-4 min-w-0">
@@ -73,6 +80,7 @@ export default async function ColecaoPage({
             q={q}
             filtros={filtros}
           />
+          <CamposExtraEditor tipoColecao={colecao.tipoColecao} />
         </>
       )}
     </main>

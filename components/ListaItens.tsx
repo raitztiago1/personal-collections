@@ -34,7 +34,8 @@ type ListaItensProps =
       q: string;
       filtros: Record<string, string>;
     }
-  | { modo: "builds" };
+  | { modo: "builds" }
+  | { modo: "wishlist"; tipoColecao: TipoColecaoItem; slug: string };
 
 type EstadoLista =
   | { status: "carregando" }
@@ -46,11 +47,13 @@ export function ListaItens(props: ListaItensProps) {
   const chave =
     props.modo === "builds"
       ? "builds"
-      : `${props.modo}:${montarQueryBusca({
-          q: props.q,
-          tipoColecao: props.modo === "colecao" ? props.tipoColecao : undefined,
-          filtros: props.modo === "colecao" ? props.filtros : undefined,
-        })}`;
+      : props.modo === "wishlist"
+        ? `wishlist:${props.tipoColecao}`
+        : `${props.modo}:${montarQueryBusca({
+            q: props.q,
+            tipoColecao: props.modo === "colecao" ? props.tipoColecao : undefined,
+            filtros: props.modo === "colecao" ? props.filtros : undefined,
+          })}`;
 
   return <ListaItensInterna key={chave} {...props} />;
 }
@@ -58,9 +61,10 @@ export function ListaItens(props: ListaItensProps) {
 function ListaItensInterna(props: ListaItensProps) {
   const [estado, setEstado] = useState<EstadoLista>({ status: "carregando" });
   const modo = props.modo;
-  const tipoColecao = modo === "colecao" ? props.tipoColecao : undefined;
+  const tipoColecao =
+    modo === "colecao" || modo === "wishlist" ? props.tipoColecao : undefined;
   const queryBusca =
-    modo === "builds"
+    modo === "builds" || modo === "wishlist"
       ? ""
       : montarQueryBusca({
           q: props.q,
@@ -73,6 +77,28 @@ function ListaItensInterna(props: ListaItensProps) {
 
     void (async () => {
       try {
+        if (modo === "wishlist" && tipoColecao) {
+          const lista = await lerJson<ItemComFicha[]>(
+            await fetch(
+              `/api/wishlist?tipoColecao=${encodeURIComponent(tipoColecao)}`,
+              { signal: ac.signal },
+            ),
+          );
+          if (!ac.signal.aborted) {
+            setEstado({
+              status: "itens",
+              itens: lista.map((item) => ({
+                id: item.id,
+                tipoColecao: item.tipoColecao,
+                nome: item.nome,
+                capa: null,
+                ficha: eObjeto(item.ficha) ? item.ficha : {},
+              })),
+            });
+          }
+          return;
+        }
+
         if (modo === "builds") {
           const lista = await lerJson<BuildResumo[]>(
             await fetch("/api/builds", { signal: ac.signal }),
@@ -169,7 +195,9 @@ function ListaItensInterna(props: ListaItensProps) {
   if (estado.itens.length === 0) {
     return (
       <p className="mt-4 text-sm text-zinc-600">
-        Nenhum item encontrado no inventário.
+        {props.modo === "wishlist"
+          ? "Nenhum item na wishlist."
+          : "Nenhum item encontrado no inventário."}
       </p>
     );
   }
@@ -178,18 +206,22 @@ function ListaItensInterna(props: ListaItensProps) {
     <ul className="mt-4 grid grid-cols-1 gap-3">
       {estado.itens.map((item) => {
         const campos =
-          props.modo === "colecao"
+          props.modo === "colecao" || props.modo === "wishlist"
             ? valoresChaveLista(item.tipoColecao, item.ficha)
             : [];
         const capaUrl = item.capa ? `/api/fotos/${item.capa}` : null;
+        const href =
+          props.modo === "wishlist"
+            ? `/colecoes/${props.slug}/wishlist/${item.id}`
+            : hrefItemColecao(item.tipoColecao, item.id);
 
         return (
           <li key={item.id} className="min-w-0">
             <Link
-              href={hrefItemColecao(item.tipoColecao, item.id)}
+              href={href}
               className="flex min-w-0 items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3"
             >
-              {capaUrl ? (
+              {props.modo === "wishlist" ? null : capaUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={capaUrl}

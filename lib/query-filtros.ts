@@ -24,6 +24,20 @@ export type ValorChaveLista = {
   valor: string;
 };
 
+export type ExtraUI = {
+  definicaoId: string;
+  nome: string;
+  tipoValor: "TEXTO" | "NUMERO";
+  valorTexto: string | null;
+  valorNumero: number | null;
+};
+
+export type ExtraPayload = {
+  definicaoId: string;
+  valorTexto?: string | null;
+  valorNumero?: number | null;
+};
+
 const CAMPOS_CHAVE: Record<TipoColecaoItem, readonly [string, string]> = {
   TENIS: ["marca", "tamanho"],
   WHISKY: ["destilaria", "idade_anos"],
@@ -58,6 +72,71 @@ export function rotuloTipoColecao(tipo: TipoColecaoItem): string {
 
 export function hrefItemColecao(tipo: TipoColecaoItem, id: string): string {
   return `/colecoes/${slugPorTipoColecao(tipo)}/itens/${id}`;
+}
+
+export function colecaoTemWishlist(slug: string): boolean {
+  const colecao = colecaoPorSlug(slug);
+  return colecao !== undefined && colecao.kind === "item";
+}
+
+export function hrefWishlistColecao(slug: string): string | undefined {
+  if (!colecaoTemWishlist(slug)) {
+    return undefined;
+  }
+  return `/colecoes/${slug}/wishlist`;
+}
+
+export function extrasPreenchidos(
+  extras: ExtraUI[],
+): { nome: string; valor: string }[] {
+  return extras.flatMap((extra) => {
+    if (extra.tipoValor === "TEXTO") {
+      const valor = extra.valorTexto?.trim() ?? "";
+      return valor === "" ? [] : [{ nome: extra.nome, valor }];
+    }
+    if (extra.valorNumero === null || extra.valorNumero === undefined) {
+      return [];
+    }
+    return [{ nome: extra.nome, valor: String(extra.valorNumero) }];
+  });
+}
+
+export function estadoInicialExtras(extras: ExtraUI[]): Record<string, string> {
+  const estado: Record<string, string> = {};
+  for (const extra of extras) {
+    if (extra.tipoValor === "TEXTO") {
+      estado[extra.definicaoId] = extra.valorTexto ?? "";
+      continue;
+    }
+    estado[extra.definicaoId] =
+      extra.valorNumero === null || extra.valorNumero === undefined
+        ? ""
+        : String(extra.valorNumero);
+  }
+  return estado;
+}
+
+export function montarPayloadExtras(
+  extras: ExtraUI[],
+  valores: Record<string, string>,
+): ExtraPayload[] {
+  return extras.map((extra) => {
+    const bruto = valores[extra.definicaoId]?.trim() ?? "";
+    if (extra.tipoValor === "TEXTO") {
+      return {
+        definicaoId: extra.definicaoId,
+        valorTexto: bruto === "" ? null : bruto,
+      };
+    }
+    if (bruto === "") {
+      return { definicaoId: extra.definicaoId, valorNumero: null };
+    }
+    const numero = Number(bruto);
+    if (!Number.isFinite(numero)) {
+      throw new Error(`${extra.nome} inválido.`);
+    }
+    return { definicaoId: extra.definicaoId, valorNumero: numero };
+  });
 }
 
 export function montarQueryBusca(opts: {

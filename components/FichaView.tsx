@@ -2,6 +2,10 @@ import {
   camposPreenchidosFicha,
 } from "@/lib/domain/rotulos-ficha";
 import type { TipoColecaoItem } from "@/lib/domain/colecoes";
+import {
+  extrasPreenchidos,
+  type ExtraUI,
+} from "@/lib/query-filtros";
 
 const ROTULOS_COMUNS = {
   descricao: "Descrição",
@@ -19,6 +23,7 @@ export function FichaView({
   dataAquisicao,
   precoPago,
   tags,
+  extras = [],
 }: {
   tipoColecao: TipoColecaoItem;
   ficha: Record<string, unknown>;
@@ -27,6 +32,7 @@ export function FichaView({
   dataAquisicao?: string | null;
   precoPago?: number | null;
   tags?: string[];
+  extras?: ExtraUI[];
 }) {
   const comuns = camposComunsPreenchidos({
     descricao,
@@ -36,8 +42,13 @@ export function FichaView({
     tags,
   });
   const dominio = camposPreenchidosFicha(tipoColecao, ficha);
+  const extrasVisiveis = extrasPreenchidos(extras);
 
-  if (comuns.length === 0 && dominio.length === 0) {
+  if (
+    comuns.length === 0 &&
+    dominio.length === 0 &&
+    extrasVisiveis.length === 0
+  ) {
     return (
       <p className="mt-4 text-sm text-zinc-600">
         Só o nome está preenchido. Edite abaixo para completar a ficha.
@@ -71,6 +82,22 @@ export function FichaView({
               <div key={campo.campo} className="min-w-0">
                 <dt className="text-xs font-medium text-zinc-600">
                   {campo.rotulo}
+                </dt>
+                <dd className="mt-0.5 break-words text-sm">{campo.valor}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
+
+      {extrasVisiveis.length > 0 ? (
+        <section className="min-w-0">
+          <h2 className="text-sm font-semibold tracking-tight">Campos extras</h2>
+          <dl className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {extrasVisiveis.map((campo) => (
+              <div key={campo.nome} className="min-w-0">
+                <dt className="text-xs font-medium text-zinc-600">
+                  {campo.nome}
                 </dt>
                 <dd className="mt-0.5 break-words text-sm">{campo.valor}</dd>
               </div>

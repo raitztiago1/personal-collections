@@ -4,6 +4,11 @@ import {
   camposChaveLista,
   camposFiltroColecao,
   colecaoPorSlug,
+  colecaoTemWishlist,
+  extrasPreenchidos,
+  estadoInicialExtras,
+  hrefWishlistColecao,
+  montarPayloadExtras,
   montarQueryBusca,
   parsearQueryLista,
   rotuloCampoFicha,
@@ -114,6 +119,99 @@ describe("camposFiltroColecao", () => {
     const campos = camposFiltroColecao("YUGIOH").map((c) => c.campo);
     expect(campos).toContain("raridade");
     expect(campos).not.toContain("atk");
+  });
+});
+
+describe("wishlist da coleção", () => {
+  it("existe nas 7 coleções de item e não em setups PC", () => {
+    expect(colecaoTemWishlist("tenis")).toBe(true);
+    expect(colecaoTemWishlist("whisky")).toBe(true);
+    expect(colecaoTemWishlist("perfumes")).toBe(true);
+    expect(colecaoTemWishlist("yugioh")).toBe(true);
+    expect(colecaoTemWishlist("mangas")).toBe(true);
+    expect(colecaoTemWishlist("livros")).toBe(true);
+    expect(colecaoTemWishlist("gadgets")).toBe(true);
+    expect(colecaoTemWishlist("pc-builds")).toBe(false);
+    expect(colecaoTemWishlist("wishlist")).toBe(false);
+  });
+
+  it("monta o href da wishlist com o slug da coleção", () => {
+    expect(hrefWishlistColecao("whisky")).toBe("/colecoes/whisky/wishlist");
+    expect(hrefWishlistColecao("perfumes")).toBe("/colecoes/perfumes/wishlist");
+    expect(hrefWishlistColecao("pc-builds")).toBeUndefined();
+  });
+});
+
+describe("extras na ficha", () => {
+  const batchCode = {
+    definicaoId: "def-1",
+    nome: "batch code",
+    tipoValor: "TEXTO" as const,
+    valorTexto: "8N01",
+    valorNumero: null,
+  };
+  const mlRestantes = {
+    definicaoId: "def-2",
+    nome: "ml restantes",
+    tipoValor: "NUMERO" as const,
+    valorTexto: null,
+    valorNumero: 18.5,
+  };
+
+  it("mostra extra 'batch code' preenchido na ficha do perfume", () => {
+    expect(extrasPreenchidos([batchCode, mlRestantes])).toEqual([
+      { nome: "batch code", valor: "8N01" },
+      { nome: "ml restantes", valor: "18.5" },
+    ]);
+  });
+
+  it("omite extras vazios", () => {
+    expect(
+      extrasPreenchidos([
+        { ...batchCode, valorTexto: "  " },
+        { ...mlRestantes, valorNumero: null },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("monta o payload PATCH com texto, número e vazio", () => {
+    expect(
+      montarPayloadExtras(
+        [batchCode, mlRestantes],
+        { "def-1": " 8N01 ", "def-2": "18.5" },
+      ),
+    ).toEqual([
+      { definicaoId: "def-1", valorTexto: "8N01" },
+      { definicaoId: "def-2", valorNumero: 18.5 },
+    ]);
+    expect(
+      montarPayloadExtras(
+        [batchCode, mlRestantes],
+        { "def-1": "  ", "def-2": "" },
+      ),
+    ).toEqual([
+      { definicaoId: "def-1", valorTexto: null },
+      { definicaoId: "def-2", valorNumero: null },
+    ]);
+  });
+
+  it("rejeita número inválido no extra", () => {
+    expect(() =>
+      montarPayloadExtras([mlRestantes], { "def-2": "abc" }),
+    ).toThrow(/ml restantes/i);
+  });
+
+  it("preenche o estado inicial dos campos extras", () => {
+    expect(estadoInicialExtras([batchCode, mlRestantes])).toEqual({
+      "def-1": "8N01",
+      "def-2": "18.5",
+    });
+    expect(
+      estadoInicialExtras([
+        { ...batchCode, valorTexto: null },
+        { ...mlRestantes, valorNumero: null },
+      ]),
+    ).toEqual({ "def-1": "", "def-2": "" });
   });
 });
 

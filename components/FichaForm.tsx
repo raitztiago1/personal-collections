@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { TipoColecaoItem } from "@/lib/domain/colecoes";
 import {
   camposFichaUI,
   type CampoFichaUI,
 } from "@/lib/domain/rotulos-ficha";
+import {
+  estadoInicialExtras,
+  montarPayloadExtras,
+  type ExtraUI,
+} from "@/lib/query-filtros";
 import { FotoGaleria, type FotoResumo } from "./FotoGaleria";
 
 const CAMPO_CLASS =
@@ -31,21 +36,28 @@ export type ValoresIniciaisItem = {
   ficha: Record<string, unknown>;
 };
 
+export type ModoFicha = "item" | "wishlist";
+
 export function FichaForm({
   tipoColecao,
   slug,
   itemId,
   inicial,
   fotosIniciais = [],
+  extrasIniciais = [],
+  modo = "item",
 }: {
   tipoColecao: TipoColecaoItem;
   slug: string;
   itemId?: string;
   inicial?: ValoresIniciaisItem;
   fotosIniciais?: FotoResumo[];
+  extrasIniciais?: ExtraUI[];
+  modo?: ModoFicha;
 }) {
   const router = useRouter();
   const campos = camposFichaUI(tipoColecao);
+  const wishlist = modo === "wishlist";
   const [nome, setNome] = useState(inicial?.nome ?? "");
   const [descricao, setDescricao] = useState(inicial?.descricao ?? "");
   const [notasPessoais, setNotasPessoais] = useState(
@@ -63,8 +75,52 @@ export function FichaForm({
   const [ficha, setFicha] = useState<Record<string, string>>(() =>
     estadoFicha(campos, inicial?.ficha ?? {}),
   );
+  const [extras, setExtras] = useState<ExtraUI[]>(() =>
+    itemId ? extrasIniciais : [],
+  );
+  const [valoresExtras, setValoresExtras] = useState<Record<string, string>>(
+    () => estadoInicialExtras(itemId ? extrasIniciais : []),
+  );
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    if (itemId) {
+      return;
+    }
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const resposta = await fetch(
+          `/api/campos-extra?tipoColecao=${encodeURIComponent(tipoColecao)}`,
+          { signal: ac.signal },
+        );
+        if (!resposta.ok) {
+          return;
+        }
+        const defs = (await resposta.json()) as {
+          id: string;
+          nome: string;
+          tipoValor: "TEXTO" | "NUMERO";
+        }[];
+        if (ac.signal.aborted) {
+          return;
+        }
+        const carregados: ExtraUI[] = defs.map((def) => ({
+          definicaoId: def.id,
+          nome: def.nome,
+          tipoValor: def.tipoValor,
+          valorTexto: null,
+          valorNumero: null,
+        }));
+        setExtras(carregados);
+        setValoresExtras(estadoInicialExtras(carregados));
+      } catch {
+        /* lista vazia se a API falhar */
+      }
+    })();
+    return () => ac.abort();
+  }, [itemId, tipoColecao]);
 
   function atualizarFicha(campo: string, valor: string) {
     setFicha((atual) => ({ ...atual, [campo]: valor }));
@@ -82,21 +138,22 @@ export function FichaForm({
 
     let fichaPayload: Record<string, unknown>;
     let preco: number | null;
+    let extrasPayload: ReturnType<typeof montarPayloadExtras>;
     try {
       fichaPayload = montarFicha(campos, ficha);
       preco = montarPreco(precoPago);
+      extrasPayload = montarPayloadExtras(extras, valoresExtras);
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Dados inválidos.");
       return;
     }
 
+    const criando = !itemId;
     const payload: Record<string, unknown> = {
       nome: nomeLimpo,
       descricao: descricao.trim() === "" ? null : descricao.trim(),
       notasPessoais:
         notasPessoais.trim() === "" ? null : notasPessoais.trim(),
-      dataAquisicao: dataAquisicao === "" ? null : dataAquisicao,
-      precoPago: preco,
       tags: tags
         .split(",")
         .map((tag) => tag.trim())
@@ -104,15 +161,27 @@ export function FichaForm({
       ficha: fichaPayload,
     };
 
-    const criando = !itemId;
+    if (!wishlist) {
+      payload.dataAquisicao = dataAquisicao === "" ? null : dataAquisicao;
+      payload.precoPago = preco;
+    }
+
     if (criando) {
       payload.tipoColecao = tipoColecao;
+    } else {
+      payload.extras = extrasPayload;
     }
 
     setOcupado(true);
     try {
       const resposta = await fetch(
-        criando ? "/api/itens" : `/api/itens/${itemId}`,
+        criando
+          ? wishlist
+            ? "/api/wishlist"
+            : "/api/itens"
+          : wishlist
+            ? `/api/wishlist/${itemId}`
+            : `/api/itens/${itemId}`,
         {
           method: criando ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -120,12 +189,41 @@ export function FichaForm({
         },
       );
       if (!resposta.ok) {
-        setErro(await lerErro(resposta, "Não foi possível salvar o item."));
+        setErro(
+          await lerErro(
+            resposta,
+            wishlist
+              ? "Não foi possível salvar a wishlist."
+              : "Não foi possível salvar o item.",
+          ),
+        );
         return;
       }
       if (criando) {
         const criado = (await resposta.json()) as { id: string };
-        router.push(`/colecoes/${slug}/itens/${criado.id}`);
+        if (extrasPayload.length > 0) {
+          const patchExtras = await fetch(
+            wishlist
+              ? `/api/wishlist/${criado.id}`
+              : `/api/itens/${criado.id}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ extras: extrasPayload }),
+            },
+          );
+          if (!patchExtras.ok) {
+            setErro(
+              await lerErro(
+                patchExtras,
+                "O cadastro foi criado, mas os campos extras não foram salvos.",
+              ),
+            );
+            router.push(destinoAposSalvar(slug, criado.id, wishlist));
+            return;
+          }
+        }
+        router.push(destinoAposSalvar(slug, criado.id, wishlist));
         return;
       }
       router.refresh();
@@ -138,24 +236,56 @@ export function FichaForm({
     if (!itemId) {
       return;
     }
-    if (!window.confirm("Excluir este item? Esta ação não pode ser desfeita.")) {
+    const mensagem = wishlist
+      ? "Excluir esta entrada da wishlist? Esta ação não pode ser desfeita."
+      : "Excluir este item? Esta ação não pode ser desfeita.";
+    if (!window.confirm(mensagem)) {
       return;
     }
     setErro(null);
     setOcupado(true);
     try {
-      const resposta = await fetch(`/api/itens/${itemId}`, {
-        method: "DELETE",
-      });
+      const resposta = await fetch(
+        wishlist ? `/api/wishlist/${itemId}` : `/api/itens/${itemId}`,
+        { method: "DELETE" },
+      );
       if (resposta.status === 409) {
         setErro(await lerErro(resposta, "Não é possível excluir este item."));
         return;
       }
       if (!resposta.ok) {
-        setErro(await lerErro(resposta, "Não foi possível excluir o item."));
+        setErro(
+          await lerErro(
+            resposta,
+            wishlist
+              ? "Não foi possível excluir a wishlist."
+              : "Não foi possível excluir o item.",
+          ),
+        );
         return;
       }
-      router.push(`/colecoes/${slug}`);
+      router.push(wishlist ? `/colecoes/${slug}/wishlist` : `/colecoes/${slug}`);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function comprar() {
+    if (!itemId || !wishlist) {
+      return;
+    }
+    setErro(null);
+    setOcupado(true);
+    try {
+      const resposta = await fetch(`/api/wishlist/${itemId}/comprar`, {
+        method: "POST",
+      });
+      if (!resposta.ok) {
+        setErro(await lerErro(resposta, "Não foi possível concluir a compra."));
+        return;
+      }
+      const item = (await resposta.json()) as { id: string };
+      router.push(`/colecoes/${slug}/itens/${item.id}`);
     } finally {
       setOcupado(false);
     }
@@ -163,6 +293,22 @@ export function FichaForm({
 
   return (
     <div className="mt-6 min-w-0 space-y-8">
+      {wishlist && itemId ? (
+        <section className="min-w-0">
+          <button
+            type="button"
+            disabled={ocupado}
+            onClick={() => void comprar()}
+            className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+          >
+            Já comprei
+          </button>
+          <p className="mt-2 text-sm text-zinc-600">
+            Copia para o inventário e remove da wishlist.
+          </p>
+        </section>
+      ) : null}
+
       <form onSubmit={(evento) => void salvar(evento)} className="min-w-0">
         {erro ? (
           <p className="mb-4 text-sm text-red-700" role="alert">
@@ -218,35 +364,39 @@ export function FichaForm({
                 className={CAMPO_CLASS}
               />
             </div>
-            <div className="min-w-0">
-              <label htmlFor="item-data" className="block text-sm font-medium">
-                Data de aquisição
-              </label>
-              <input
-                id="item-data"
-                name="dataAquisicao"
-                type="date"
-                value={dataAquisicao}
-                onChange={(evento) => setDataAquisicao(evento.target.value)}
-                className={CAMPO_CLASS}
-              />
-            </div>
-            <div className="min-w-0">
-              <label htmlFor="item-preco" className="block text-sm font-medium">
-                Preço pago
-              </label>
-              <input
-                id="item-preco"
-                name="precoPago"
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={precoPago}
-                onChange={(evento) => setPrecoPago(evento.target.value)}
-                className={CAMPO_CLASS}
-              />
-            </div>
+            {wishlist ? null : (
+              <>
+                <div className="min-w-0">
+                  <label htmlFor="item-data" className="block text-sm font-medium">
+                    Data de aquisição
+                  </label>
+                  <input
+                    id="item-data"
+                    name="dataAquisicao"
+                    type="date"
+                    value={dataAquisicao}
+                    onChange={(evento) => setDataAquisicao(evento.target.value)}
+                    className={CAMPO_CLASS}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <label htmlFor="item-preco" className="block text-sm font-medium">
+                    Preço pago
+                  </label>
+                  <input
+                    id="item-preco"
+                    name="precoPago"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={precoPago}
+                    onChange={(evento) => setPrecoPago(evento.target.value)}
+                    className={CAMPO_CLASS}
+                  />
+                </div>
+              </>
+            )}
             <div className="min-w-0 sm:col-span-2">
               <label htmlFor="item-tags" className="block text-sm font-medium">
                 Tags
@@ -277,24 +427,42 @@ export function FichaForm({
           </div>
         </section>
 
+        <CamposExtraValores
+          extras={extras}
+          valores={valoresExtras}
+          onChange={(id, valor) =>
+            setValoresExtras((atual) => ({ ...atual, [id]: valor }))
+          }
+        />
+
         <div className="mt-6">
           <button
             type="submit"
             disabled={ocupado}
             className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60"
           >
-            {itemId ? "Salvar" : "Criar item"}
+            {itemId
+              ? "Salvar"
+              : wishlist
+                ? "Adicionar à wishlist"
+                : "Criar item"}
           </button>
         </div>
       </form>
 
       {itemId ? (
-        <FotoGaleria donoId={itemId} fotosIniciais={fotosIniciais} />
+        <FotoGaleria
+          donoId={itemId}
+          fotosIniciais={fotosIniciais}
+          donoTipo={wishlist ? "WISHLIST" : "ITEM"}
+        />
       ) : (
         <section className="min-w-0">
           <h2 className="text-sm font-semibold tracking-tight">Fotos</h2>
           <p className="mt-2 text-sm text-zinc-600">
-            Salve o item para enviar fotos.
+            {wishlist
+              ? "Salve a wishlist para enviar fotos."
+              : "Salve o item para enviar fotos."}
           </p>
         </section>
       )}
@@ -303,7 +471,9 @@ export function FichaForm({
         <section className="min-w-0 border-t border-zinc-200 pt-6">
           <h2 className="text-sm font-semibold tracking-tight">Excluir</h2>
           <p className="mt-2 text-sm text-zinc-600">
-            Remove o item e as fotos. Pedimos confirmação antes.
+            {wishlist
+              ? "Remove a entrada e as fotos. Pedimos confirmação antes."
+              : "Remove o item e as fotos. Pedimos confirmação antes."}
           </p>
           <button
             type="button"
@@ -311,11 +481,53 @@ export function FichaForm({
             onClick={() => void excluir()}
             className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-800 disabled:opacity-60"
           >
-            Excluir item
+            {wishlist ? "Excluir da wishlist" : "Excluir item"}
           </button>
         </section>
       ) : null}
     </div>
+  );
+}
+
+function CamposExtraValores({
+  extras,
+  valores,
+  onChange,
+}: {
+  extras: ExtraUI[];
+  valores: Record<string, string>;
+  onChange: (id: string, valor: string) => void;
+}) {
+  if (extras.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mt-8 min-w-0">
+      <h2 className="text-sm font-semibold tracking-tight">Campos extras</h2>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {extras.map((extra) => {
+          const id = `extra-${extra.definicaoId}`;
+          return (
+            <div key={extra.definicaoId} className="min-w-0">
+              <label htmlFor={id} className="block text-sm font-medium">
+                {extra.nome}
+              </label>
+              <input
+                id={id}
+                name={id}
+                type={extra.tipoValor === "NUMERO" ? "number" : "text"}
+                inputMode={extra.tipoValor === "NUMERO" ? "decimal" : undefined}
+                step={extra.tipoValor === "NUMERO" ? "any" : undefined}
+                value={valores[extra.definicaoId] ?? ""}
+                onChange={(evento) => onChange(extra.definicaoId, evento.target.value)}
+                className={CAMPO_CLASS}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -439,6 +651,16 @@ function dataParaInput(valor: string | null | undefined): string {
     return "";
   }
   return valor.slice(0, 10);
+}
+
+function destinoAposSalvar(
+  slug: string,
+  id: string,
+  wishlist: boolean,
+): string {
+  return wishlist
+    ? `/colecoes/${slug}/wishlist/${id}`
+    : `/colecoes/${slug}/itens/${id}`;
 }
 
 async function lerErro(resposta: Response, fallback: string): Promise<string> {

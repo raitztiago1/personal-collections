@@ -16,9 +16,11 @@ const TAMANHO_MAX_BYTES = 10 * 1024 * 1024;
 export function FotoGaleria({
   donoId,
   fotosIniciais,
+  donoTipo = "ITEM",
 }: {
   donoId: string;
   fotosIniciais: FotoResumo[];
+  donoTipo?: "ITEM" | "WISHLIST";
 }) {
   const router = useRouter();
   const fotos = fotosIniciais;
@@ -42,7 +44,7 @@ export function FotoGaleria({
 
     const form = new FormData();
     form.set("arquivo", arquivo);
-    form.set("donoTipo", "ITEM");
+    form.set("donoTipo", donoTipo);
     form.set("donoId", donoId);
     if (fotos.length === 0) {
       form.set("isCapa", "true");
