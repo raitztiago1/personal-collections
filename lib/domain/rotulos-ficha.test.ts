@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { TIPOS_COLECAO_ITEM } from "./colecoes";
 import { schemasFichaItem } from "./fichas-item";
+import { schemasFichaPeca, type TipoPeca } from "./fichas-peca";
 import {
+  camposFichaPecaUI,
   camposFichaUI,
   camposPreenchidosFicha,
+  camposPreenchidosFichaPeca,
   rotuloCampoFicha,
+  rotuloTipoPeca,
   rotuloValorFicha,
 } from "./rotulos-ficha";
 
@@ -173,5 +177,120 @@ describe("camposPreenchidosFicha", () => {
     expect(
       camposPreenchidosFicha("TENIS", { condicao: "USADO" }),
     ).toEqual([{ campo: "condicao", rotulo: "Condição", valor: "Usado" }]);
+  });
+});
+
+describe("camposFichaPecaUI", () => {
+  it("gera campos da GPU na ordem do schema, com rótulos pt-BR", () => {
+    const campos = camposFichaPecaUI("GPU");
+    expect(campos.map((c) => c.campo)).toEqual(
+      Object.keys(schemasFichaPeca.GPU.shape),
+    );
+    expect(campos.find((c) => c.campo === "vram_gb")).toMatchObject({
+      rotulo: "VRAM (GB)",
+      tipo: "decimal",
+    });
+    expect(campos.find((c) => c.campo === "clock_mhz")).toMatchObject({
+      rotulo: "Clock (MHz)",
+      tipo: "inteiro",
+    });
+    expect(campos.find((c) => c.campo === "barramento")).toMatchObject({
+      rotulo: "Barramento",
+      tipo: "texto",
+    });
+  });
+
+  it("não mistura campos de gadget na ficha de peça", () => {
+    const tipos = Object.keys(schemasFichaPeca) as TipoPeca[];
+    for (const tipo of tipos) {
+      const campos = camposFichaPecaUI(tipo).map((c) => c.campo);
+      expect(campos, tipo).not.toContain("tipo_aparelho");
+      expect(campos, tipo).not.toContain("acessorios");
+    }
+  });
+
+  it("usa select para enums de RAM e armazenamento", () => {
+    const ram = Object.fromEntries(
+      camposFichaPecaUI("RAM").map((c) => [c.campo, c]),
+    );
+    expect(ram.tipo).toMatchObject({
+      tipo: "enum",
+      opcoes: [
+        { valor: "DDR3", rotulo: "DDR3" },
+        { valor: "DDR4", rotulo: "DDR4" },
+        { valor: "DDR5", rotulo: "DDR5" },
+        { valor: "OUTRO", rotulo: "Outro" },
+      ],
+    });
+    expect(ram.capacidade_gb.rotulo).toBe("Capacidade (GB)");
+    expect(ram.speed_mhz.rotulo).toBe("Speed (MHz)");
+
+    const disco = Object.fromEntries(
+      camposFichaPecaUI("ARMAZENAMENTO").map((c) => [c.campo, c]),
+    );
+    expect(disco.tipo?.opcoes?.map((o) => o.rotulo)).toEqual([
+      "SSD NVMe",
+      "SSD SATA",
+      "HDD",
+      "Outro",
+    ]);
+  });
+});
+
+describe("camposPreenchidosFichaPeca", () => {
+  it("mostra VRAM, clock e barramento da GPU com rótulo, não JSON", () => {
+    const campos = camposPreenchidosFichaPeca("GPU", {
+      marca: "NVIDIA",
+      modelo: "RTX 3060",
+      vram_gb: 8,
+      clock_mhz: 1777,
+      barramento: "PCIe 4.0",
+    });
+
+    expect(campos).toEqual([
+      { campo: "marca", rotulo: "Marca", valor: "NVIDIA" },
+      { campo: "modelo", rotulo: "Modelo", valor: "RTX 3060" },
+      { campo: "vram_gb", rotulo: "VRAM (GB)", valor: "8" },
+      { campo: "clock_mhz", rotulo: "Clock (MHz)", valor: "1777" },
+      { campo: "barramento", rotulo: "Barramento", valor: "PCIe 4.0" },
+    ]);
+    expect(campos.map((c) => c.rotulo).join(" ")).toMatch(/VRAM/);
+    expect(JSON.stringify(campos)).not.toContain('"vram_gb":8');
+  });
+
+  it("mostra núcleos, threads e clock da CPU com rótulos", () => {
+    expect(
+      camposPreenchidosFichaPeca("CPU", {
+        nucleos: 6,
+        threads: 12,
+        clock_ghz: 3.7,
+      }),
+    ).toEqual([
+      { campo: "nucleos", rotulo: "Núcleos", valor: "6" },
+      { campo: "threads", rotulo: "Threads", valor: "12" },
+      { campo: "clock_ghz", rotulo: "Clock (GHz)", valor: "3.7" },
+    ]);
+  });
+});
+
+describe("rotuloTipoPeca", () => {
+  it("humaniza tipos de peça sem misturar com gadget", () => {
+    expect(rotuloTipoPeca("GPU")).toBe("GPU");
+    expect(rotuloTipoPeca("PLACA_MAE")).toBe("Placa-mãe");
+    expect(rotuloTipoPeca("ARMAZENAMENTO")).toBe("Armazenamento");
+    expect(rotuloTipoPeca("PERIFERICO")).toBe("Periférico");
+    expect(rotuloTipoPeca("PSU")).toBe("Fonte");
+  });
+});
+
+describe("rótulos de peça cobrem o schema", () => {
+  it("nenhuma chave de ficha de peça fica crua ou com underscore", () => {
+    for (const tipo of Object.keys(schemasFichaPeca) as TipoPeca[]) {
+      for (const campo of Object.keys(schemasFichaPeca[tipo].shape)) {
+        const rotulo = rotuloCampoFicha(campo);
+        expect(rotulo, `${tipo}.${campo}`).not.toBe(campo);
+        expect(rotulo, `${tipo}.${campo}`).not.toMatch(/_/);
+      }
+    }
   });
 });

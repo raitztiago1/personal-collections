@@ -1,17 +1,20 @@
 import { z } from "zod";
 
-export type TipoPeca =
-  | "GPU"
-  | "CPU"
-  | "RAM"
-  | "ARMAZENAMENTO"
-  | "PLACA_MAE"
-  | "PSU"
-  | "GABINETE"
-  | "COOLER"
-  | "MONITOR"
-  | "PERIFERICO"
-  | "OUTRO";
+export const TIPOS_PECA = [
+  "GPU",
+  "CPU",
+  "RAM",
+  "ARMAZENAMENTO",
+  "PLACA_MAE",
+  "PSU",
+  "GABINETE",
+  "COOLER",
+  "MONITOR",
+  "PERIFERICO",
+  "OUTRO",
+] as const;
+
+export type TipoPeca = (typeof TIPOS_PECA)[number];
 
 export type FlagsCampoFicha = {
   filtravel: boolean;

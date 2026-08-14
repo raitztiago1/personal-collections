@@ -349,7 +349,7 @@ async function carregarItemDoDono(
   return item;
 }
 
-function estoqueDaCarta(item: Item): number {
+export function estoqueDaCarta(item: Pick<Item, "ficha">): number {
   const quantidade = item.ficha.quantidade;
   if (typeof quantidade === "number" && Number.isInteger(quantidade) && quantidade >= 1) {
     return quantidade;

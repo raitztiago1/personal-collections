@@ -1,5 +1,6 @@
 import type { TipoColecaoItem } from "./colecoes";
 import { schemasFichaItem } from "./fichas-item";
+import { schemasFichaPeca, type TipoPeca } from "./fichas-peca";
 
 export type TipoCampoFicha = "texto" | "enum" | "inteiro" | "decimal";
 
@@ -67,6 +68,37 @@ const ROTULOS_CAMPO: Record<string, string> = {
   modelo: "Modelo",
   capacidade: "Capacidade",
   acessorios: "Acessórios",
+  vram_gb: "VRAM (GB)",
+  clock_mhz: "Clock (MHz)",
+  barramento: "Barramento",
+  nucleos: "Núcleos",
+  threads: "Threads",
+  clock_ghz: "Clock (GHz)",
+  capacidade_gb: "Capacidade (GB)",
+  speed_mhz: "Speed (MHz)",
+  tipo: "Tipo",
+  interface: "Interface",
+  socket: "Socket",
+  chipset: "Chipset",
+  potencia_w: "Potência (W)",
+  certificacao: "Certificação",
+  polegadas: "Polegadas",
+  resolucao: "Resolução",
+  taxa_hz: "Taxa (Hz)",
+};
+
+const ROTULOS_TIPO_PECA: Record<TipoPeca, string> = {
+  GPU: "GPU",
+  CPU: "CPU",
+  RAM: "RAM",
+  ARMAZENAMENTO: "Armazenamento",
+  PLACA_MAE: "Placa-mãe",
+  PSU: "Fonte",
+  GABINETE: "Gabinete",
+  COOLER: "Cooler",
+  MONITOR: "Monitor",
+  PERIFERICO: "Periférico",
+  OUTRO: "Outro",
 };
 
 const ROTULOS_VALOR: Record<string, string> = {
@@ -101,6 +133,12 @@ const ROTULOS_VALOR: Record<string, string> = {
   NAO_LIDO: "Não lido",
   LENDO: "Lendo",
   LIDO: "Lido",
+  DDR3: "DDR3",
+  DDR4: "DDR4",
+  DDR5: "DDR5",
+  SSD_NVME: "SSD NVMe",
+  SSD_SATA: "SSD SATA",
+  HDD: "HDD",
 };
 
 type SchemaCampo = {
@@ -128,7 +166,31 @@ export function camposPreenchidosFicha(
   tipo: TipoColecaoItem,
   ficha: Record<string, unknown>,
 ): CampoPreenchidoFicha[] {
-  return camposFichaUI(tipo).flatMap((campo) => {
+  return preencherCampos(camposFichaUI(tipo), ficha);
+}
+
+export function rotuloTipoPeca(tipo: TipoPeca): string {
+  return ROTULOS_TIPO_PECA[tipo];
+}
+
+export function camposFichaPecaUI(tipo: TipoPeca): CampoFichaUI[] {
+  return Object.keys(schemasFichaPeca[tipo].shape).map((campo) =>
+    montarCampoPeca(tipo, campo),
+  );
+}
+
+export function camposPreenchidosFichaPeca(
+  tipo: TipoPeca,
+  ficha: Record<string, unknown>,
+): CampoPreenchidoFicha[] {
+  return preencherCampos(camposFichaPecaUI(tipo), ficha);
+}
+
+function preencherCampos(
+  campos: CampoFichaUI[],
+  ficha: Record<string, unknown>,
+): CampoPreenchidoFicha[] {
+  return campos.flatMap((campo) => {
     const bruto = ficha[campo.campo];
     if (!valorPreenchido(bruto)) {
       return [];
@@ -144,7 +206,17 @@ export function camposPreenchidosFicha(
 }
 
 function montarCampo(tipo: TipoColecaoItem, campo: string): CampoFichaUI {
-  const interno = schemaInterno(tipo, campo);
+  return montarCampoDeSchema(schemaInternoItem(tipo, campo), campo);
+}
+
+function montarCampoPeca(tipo: TipoPeca, campo: string): CampoFichaUI {
+  return montarCampoDeSchema(schemaInternoPeca(tipo, campo), campo);
+}
+
+function montarCampoDeSchema(
+  interno: SchemaCampo | undefined,
+  campo: string,
+): CampoFichaUI {
   const tipoCampo = tipoDoCampo(interno);
   const opcoes =
     tipoCampo === "enum"
@@ -182,15 +254,27 @@ function opcoesEnum(interno: SchemaCampo | undefined): string[] {
   return interno.options.map((opcao) => String(opcao));
 }
 
-function schemaInterno(
+function schemaInternoItem(
   tipoColecao: TipoColecaoItem,
   campo: string,
 ): SchemaCampo | undefined {
-  const shape = schemasFichaItem[tipoColecao].shape as Record<
-    string,
-    SchemaCampo
-  >;
-  const schema = shape[campo];
+  return desembrulharSchema(
+    (schemasFichaItem[tipoColecao].shape as Record<string, SchemaCampo>)[campo],
+  );
+}
+
+function schemaInternoPeca(
+  tipoPeca: TipoPeca,
+  campo: string,
+): SchemaCampo | undefined {
+  return desembrulharSchema(
+    (schemasFichaPeca[tipoPeca].shape as Record<string, SchemaCampo>)[campo],
+  );
+}
+
+function desembrulharSchema(
+  schema: SchemaCampo | undefined,
+): SchemaCampo | undefined {
   if (!schema) {
     return undefined;
   }

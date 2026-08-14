@@ -26,6 +26,11 @@ type BuildResumo = {
   nome: string;
 };
 
+type DeckResumo = {
+  id: string;
+  nome: string;
+};
+
 type ListaItensProps =
   | { modo: "global"; q: string }
   | {
@@ -35,36 +40,41 @@ type ListaItensProps =
       filtros: Record<string, string>;
     }
   | { modo: "builds" }
+  | { modo: "decks" }
   | { modo: "wishlist"; tipoColecao: TipoColecaoItem; slug: string };
 
 type EstadoLista =
   | { status: "carregando" }
   | { status: "erro"; mensagem: string }
   | { status: "itens"; itens: ItemComFicha[] }
-  | { status: "builds"; builds: BuildResumo[] };
+  | { status: "builds"; builds: BuildResumo[] }
+  | { status: "decks"; decks: DeckResumo[] };
 
 export function ListaItens(props: ListaItensProps) {
   const chave =
     props.modo === "builds"
       ? "builds"
-      : props.modo === "wishlist"
-        ? `wishlist:${props.tipoColecao}`
-        : `${props.modo}:${montarQueryBusca({
-            q: props.q,
-            tipoColecao: props.modo === "colecao" ? props.tipoColecao : undefined,
-            filtros: props.modo === "colecao" ? props.filtros : undefined,
-          })}`;
+      : props.modo === "decks"
+        ? "decks"
+        : props.modo === "wishlist"
+          ? `wishlist:${props.tipoColecao}`
+          : `${props.modo}:${montarQueryBusca({
+              q: props.q,
+              tipoColecao: props.modo === "colecao" ? props.tipoColecao : undefined,
+              filtros: props.modo === "colecao" ? props.filtros : undefined,
+            })}`;
 
   return <ListaItensInterna key={chave} {...props} />;
 }
 
 function ListaItensInterna(props: ListaItensProps) {
   const [estado, setEstado] = useState<EstadoLista>({ status: "carregando" });
+  const [buscaSetup, setBuscaSetup] = useState("");
   const modo = props.modo;
   const tipoColecao =
     modo === "colecao" || modo === "wishlist" ? props.tipoColecao : undefined;
   const queryBusca =
-    modo === "builds" || modo === "wishlist"
+    modo === "builds" || modo === "decks" || modo === "wishlist"
       ? ""
       : montarQueryBusca({
           q: props.q,
@@ -107,6 +117,19 @@ function ListaItensInterna(props: ListaItensProps) {
             setEstado({
               status: "builds",
               builds: lista.map((build) => ({ id: build.id, nome: build.nome })),
+            });
+          }
+          return;
+        }
+
+        if (modo === "decks") {
+          const lista = await lerJson<DeckResumo[]>(
+            await fetch("/api/decks", { signal: ac.signal }),
+          );
+          if (!ac.signal.aborted) {
+            setEstado({
+              status: "decks",
+              decks: lista.map((deck) => ({ id: deck.id, nome: deck.nome })),
             });
           }
           return;
@@ -171,20 +194,66 @@ function ListaItensInterna(props: ListaItensProps) {
   }
 
   if (estado.status === "builds") {
-    if (estado.builds.length === 0) {
+    const termo = buscaSetup.trim().toLocaleLowerCase("pt-BR");
+    const filtrados =
+      termo === ""
+        ? estado.builds
+        : estado.builds.filter((build) =>
+            build.nome.toLocaleLowerCase("pt-BR").includes(termo),
+          );
+
+    return (
+      <div className="mt-4 min-w-0">
+        <label htmlFor="busca-setup" className="block text-sm font-medium">
+          Buscar setup
+        </label>
+        <input
+          id="busca-setup"
+          type="search"
+          value={buscaSetup}
+          onChange={(evento) => setBuscaSetup(evento.target.value)}
+          placeholder="Nome do setup"
+          className="mt-1 w-full min-w-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-base"
+        />
+        {estado.builds.length === 0 ? (
+          <p className="mt-4 text-sm text-zinc-600">Nenhum setup cadastrado.</p>
+        ) : filtrados.length === 0 ? (
+          <p className="mt-4 text-sm text-zinc-600">
+            Nenhum setup encontrado com esse nome.
+          </p>
+        ) : (
+          <ul className="mt-4 grid grid-cols-1 gap-3">
+            {filtrados.map((build) => (
+              <li key={build.id} className="min-w-0">
+                <Link
+                  href={`/colecoes/pc-builds/${build.id}`}
+                  className="block min-w-0 truncate rounded-xl border border-zinc-200 bg-white p-4 font-medium"
+                >
+                  {build.nome}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  if (estado.status === "decks") {
+    if (estado.decks.length === 0) {
       return (
-        <p className="mt-4 text-sm text-zinc-600">Nenhum setup cadastrado.</p>
+        <p className="mt-4 text-sm text-zinc-600">Nenhum deck cadastrado.</p>
       );
     }
     return (
       <ul className="mt-4 grid grid-cols-1 gap-3">
-        {estado.builds.map((build) => (
-          <li key={build.id} className="min-w-0">
+        {estado.decks.map((deck) => (
+          <li key={deck.id} className="min-w-0">
             <Link
-              href={`/colecoes/pc-builds/${build.id}`}
+              href={`/colecoes/yugioh/decks/${deck.id}`}
               className="block min-w-0 truncate rounded-xl border border-zinc-200 bg-white p-4 font-medium"
             >
-              {build.nome}
+              {deck.nome}
             </Link>
           </li>
         ))}

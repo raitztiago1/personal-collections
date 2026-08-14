@@ -46,8 +46,17 @@ export default async function ColecaoPage({
       {colecao.tipoColecao === "PC_BUILD" ? (
         <>
           <p className="mt-2 text-sm text-zinc-600">
-            Lista de setups. O detalhe de cada build entra na tarefa T17.
+            Lista de setups com peças tipadas. Gadgets avulsos ficam na coleção
+            Gadgets.
           </p>
+          <div className="mt-3">
+            <Link
+              href="/colecoes/pc-builds/novo"
+              className="inline-flex rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
+            >
+              Novo setup
+            </Link>
+          </div>
           <ListaItens modo="builds" />
         </>
       ) : (

@@ -20,7 +20,7 @@ export function FotoGaleria({
 }: {
   donoId: string;
   fotosIniciais: FotoResumo[];
-  donoTipo?: "ITEM" | "WISHLIST";
+  donoTipo?: "ITEM" | "WISHLIST" | "BUILD" | "PECA";
 }) {
   const router = useRouter();
   const fotos = fotosIniciais;
