@@ -1,7 +1,7 @@
 # Plano — Catálogo de coleções pessoais
 
 **Spec:** [about.md](about.md) (**Aprovada** 2026-08-13)  
-**Status plano:** **Aprovado** (2026-08-13)  
+**Status plano:** **Implementado** (2026-08-13) — smoke manual do about.md pendente; depois **spec-validator**  
 **Ideia:** [ideas/catalogo-colecoes-pessoais.md](../../ideas/catalogo-colecoes-pessoais.md)
 
 Projeto **novo** (pasta vazia). T01 cria a base; T03–T12 são domínio/API com **TDD** (teste falhando → código mínimo → verde). T13–T17 são UI sobre APIs já verdes. T18 fecha DoD.

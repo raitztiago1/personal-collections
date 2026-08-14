@@ -182,4 +182,4 @@ Lista **à parte**, por coleção. Mesma linguagem da ficha (um “quero esse pe
 
 ## Próximo passo
 
-→ **`spec-planner`** — `specs/catalogo-colecoes-pessoais/plan.md` (rascunho em validação).
+→ Smoke manual (checklist no README / about.md) e skill **`spec-validator`**.
