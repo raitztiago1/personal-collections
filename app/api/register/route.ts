@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { registrarUsuario, type UsuarioRepo } from "@/lib/auth-register";
 import { prisma } from "@/lib/db";
+import { ipDoRequest } from "@/lib/rate-limit";
 
 const users: UsuarioRepo = {
   findByEmail(email) {
@@ -40,8 +41,16 @@ export async function POST(request: Request) {
     {
       users,
       hashSenha: (valor) => bcrypt.hash(valor, 12),
+      ip: ipDoRequest(request.headers),
     },
   );
+
+  if (result.status === 429) {
+    return Response.json(result.body, {
+      status: 429,
+      headers: { "Retry-After": String(result.retryAfter ?? 1) },
+    });
+  }
 
   return Response.json(result.body, { status: result.status });
 }

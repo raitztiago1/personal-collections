@@ -1,7 +1,9 @@
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, signIn } from "@/auth";
+import { ipDoRequest, limitadorPadrao } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,14 @@ async function entrar(formData: FormData) {
 
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const emailNorm = String(email).trim().toLowerCase();
+  const ip = ipDoRequest(await headers());
+
+  const limiteEmail = limitadorPadrao.consultar(`login-email:${emailNorm}`, 10);
+  const limiteIp = limitadorPadrao.consultar(`login-ip:${ip}`, 30);
+  if (limiteEmail.excedido || limiteIp.excedido) {
+    redirect("/login?erro=rate-limit");
+  }
 
   try {
     await signIn("credentials", {
@@ -41,7 +51,11 @@ export default async function LoginPage({
 
   const { erro } = await searchParams;
   const mensagem =
-    erro === "credenciais" ? "E-mail ou senha inválidos." : null;
+    erro === "credenciais"
+      ? "E-mail ou senha inválidos."
+      : erro === "rate-limit"
+        ? "Muitas tentativas. Tente de novo em alguns minutos."
+        : null;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center px-4 py-8">

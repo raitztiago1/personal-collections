@@ -290,6 +290,32 @@ describe("criarBuild", () => {
     expect(builds.builds).toHaveLength(0);
   });
 
+  it("rejeita nome com 201 caracteres com 400 citando nome", async () => {
+    const builds = criarBuildRepo();
+
+    await expectHttpErro(
+      criarBuild(USUARIO_A, { nome: "a".repeat(201) }, builds),
+      400,
+      /nome/i,
+    );
+    expect(builds.builds).toHaveLength(0);
+  });
+
+  it("rejeita descricao com 4001 caracteres com 400", async () => {
+    const builds = criarBuildRepo();
+
+    await expectHttpErro(
+      criarBuild(
+        USUARIO_A,
+        { nome: "PC da sala", descricao: "x".repeat(4001) },
+        builds,
+      ),
+      400,
+      /descricao/i,
+    );
+    expect(builds.builds).toHaveLength(0);
+  });
+
   it("rejeita peça sem nome com 400", async () => {
     const builds = criarBuildRepo();
 
@@ -299,6 +325,31 @@ describe("criarBuild", () => {
         {
           nome: "PC da sala",
           pecas: [{ tipoPeca: "GPU", nome: "  ", ficha: { vram_gb: 8 } }],
+        },
+        builds,
+      ),
+      400,
+      /nome/i,
+    );
+    expect(builds.builds).toHaveLength(0);
+    expect(builds.pecas).toHaveLength(0);
+  });
+
+  it("rejeita peça com nome de 201 caracteres com 400", async () => {
+    const builds = criarBuildRepo();
+
+    await expectHttpErro(
+      criarBuild(
+        USUARIO_A,
+        {
+          nome: "PC da sala",
+          pecas: [
+            {
+              tipoPeca: "GPU",
+              nome: "a".repeat(201),
+              ficha: { vram_gb: 8 },
+            },
+          ],
         },
         builds,
       ),

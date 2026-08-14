@@ -370,6 +370,52 @@ describe("criarDeck", () => {
     );
   });
 
+  it("rejeita nome com 201 caracteres com 400 citando nome", async () => {
+    const decks = criarDeckRepo();
+    const itens = criarItemRepo();
+
+    await expectHttpErro(
+      criarDeck(USUARIO_A, { nome: "a".repeat(201) }, decks, itens),
+      400,
+      /nome/i,
+    );
+    expect(decks.decks).toHaveLength(0);
+  });
+
+  it("rejeita notas com 4001 caracteres com 400", async () => {
+    const decks = criarDeckRepo();
+    const itens = criarItemRepo();
+
+    await expectHttpErro(
+      criarDeck(
+        USUARIO_A,
+        { nome: "Goat Format", notas: "x".repeat(4001) },
+        decks,
+        itens,
+      ),
+      400,
+      /notas/i,
+    );
+    expect(decks.decks).toHaveLength(0);
+  });
+
+  it("rejeita formato com 4001 caracteres com 400", async () => {
+    const decks = criarDeckRepo();
+    const itens = criarItemRepo();
+
+    await expectHttpErro(
+      criarDeck(
+        USUARIO_A,
+        { nome: "Goat Format", formato: "x".repeat(4001) },
+        decks,
+        itens,
+      ),
+      400,
+      /formato/i,
+    );
+    expect(decks.decks).toHaveLength(0);
+  });
+
   it("rejeita nome vazio com 400 em pt-BR", async () => {
     const decks = criarDeckRepo();
     const itens = criarItemRepo();

@@ -438,6 +438,68 @@ describe("criarWishlist", () => {
     expect(repo.itens).toHaveLength(0);
   });
 
+  it("rejeita nome com 201 caracteres com 400 citando nome", async () => {
+    const repo = criarWishlistRepo();
+
+    await expectHttpErro(
+      criarWishlist(
+        USUARIO_A,
+        { nome: "a".repeat(201), tipoColecao: "PERFUME" },
+        repo,
+      ),
+      400,
+      /nome/i,
+    );
+    expect(repo.itens).toHaveLength(0);
+  });
+
+  it("aceita nome com 200 caracteres (RF-H09)", async () => {
+    const repo = criarWishlistRepo();
+    const nome = "a".repeat(200);
+
+    const wish = await criarWishlist(
+      USUARIO_A,
+      { nome, tipoColecao: "PERFUME" },
+      repo,
+    );
+
+    expect(wish.nome).toBe(nome);
+    expect(wish.tipoColecao).toBe("PERFUME");
+    expect(repo.itens).toHaveLength(1);
+  });
+
+  it("rejeita descricao ou notasPessoais com 4001 caracteres com 400", async () => {
+    const repo = criarWishlistRepo();
+
+    await expectHttpErro(
+      criarWishlist(
+        USUARIO_A,
+        {
+          nome: "Sauvage",
+          tipoColecao: "PERFUME",
+          descricao: "x".repeat(4001),
+        },
+        repo,
+      ),
+      400,
+      /descricao/i,
+    );
+    await expectHttpErro(
+      criarWishlist(
+        USUARIO_A,
+        {
+          nome: "Sauvage",
+          tipoColecao: "PERFUME",
+          notasPessoais: "x".repeat(4001),
+        },
+        repo,
+      ),
+      400,
+      /notasPessoais/i,
+    );
+    expect(repo.itens).toHaveLength(0);
+  });
+
   it("ignora dataAquisicao e precoPago no input", async () => {
     const repo = criarWishlistRepo();
 

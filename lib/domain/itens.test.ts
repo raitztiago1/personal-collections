@@ -194,6 +194,52 @@ describe("criarItem", () => {
       notas_base: "ambroxan",
     });
   });
+
+  it("rejeita nome com 201 caracteres com 400 citando nome", async () => {
+    const repo = criarRepoEmMemoria();
+
+    await expectHttpErro(
+      criarItem(
+        USUARIO_A,
+        { nome: "a".repeat(201), tipoColecao: "PERFUME" },
+        repo,
+      ),
+      400,
+      /nome/i,
+    );
+    expect(repo.itens).toHaveLength(0);
+  });
+
+  it("aceita nome com 200 caracteres (RF-H09)", async () => {
+    const repo = criarRepoEmMemoria();
+    const nome = "a".repeat(200);
+
+    const item = await criarItem(
+      USUARIO_A,
+      { nome, tipoColecao: "PERFUME" },
+      repo,
+    );
+
+    expect(item.nome).toBe(nome);
+    expect(item.tipoColecao).toBe("PERFUME");
+    expect(repo.itens).toHaveLength(1);
+  });
+
+  it("rejeita 31 tags com 400", async () => {
+    const repo = criarRepoEmMemoria();
+    const tags = Array.from({ length: 31 }, (_, i) => `tag-${i}`);
+
+    await expectHttpErro(
+      criarItem(
+        USUARIO_A,
+        { nome: "Sauvage", tipoColecao: "PERFUME", tags },
+        repo,
+      ),
+      400,
+      /tag/i,
+    );
+    expect(repo.itens).toHaveLength(0);
+  });
 });
 
 describe("listarItens", () => {

@@ -350,6 +350,25 @@ describe("criarCampoExtra / listarCamposExtra", () => {
     );
     expect(extras.defs.itens).toHaveLength(0);
   });
+
+  it("rejeita nome com 201 caracteres com 400 citando nome", async () => {
+    const extras = criarReposExtraEmMemoria();
+
+    await expectHttpErro(
+      criarCampoExtra(
+        USUARIO_A,
+        {
+          tipoColecao: "PERFUME",
+          nome: "a".repeat(201),
+          tipoValor: "TEXTO",
+        },
+        extras.defs,
+      ),
+      400,
+      /nome/i,
+    );
+    expect(extras.defs.itens).toHaveLength(0);
+  });
 });
 
 describe("atualizarCampoExtra / excluirCampoExtra", () => {
@@ -464,6 +483,34 @@ describe("extras no GET/PATCH do item", () => {
       },
     ]);
     expect(lido.extras).toEqual(atualizado.extras);
+  });
+
+  it("rejeita valorTexto com 4001 caracteres com 400", async () => {
+    const itens = criarRepoItensEmMemoria();
+    const extras = criarReposExtraEmMemoria();
+    const def = await criarCampoExtra(
+      USUARIO_A,
+      { tipoColecao: "PERFUME", nome: "batch code", tipoValor: "TEXTO" },
+      extras.defs,
+    );
+    const item = await criarItem(
+      USUARIO_A,
+      { nome: "Sauvage", tipoColecao: "PERFUME" },
+      itens,
+    );
+
+    await expectHttpErro(
+      atualizarItemComExtras(
+        USUARIO_A,
+        item.id,
+        { extras: [{ definicaoId: def.id, valorTexto: "x".repeat(4001) }] },
+        itens,
+        extras,
+      ),
+      400,
+      /valorTexto/i,
+    );
+    expect(extras.valores.itens).toHaveLength(0);
   });
 
   it("permite valor vazio no extra de texto e de número", async () => {

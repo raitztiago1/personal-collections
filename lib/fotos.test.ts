@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,11 +13,16 @@ import { HttpErro } from "./isolamento";
 import {
   apagarDono,
   apagarFoto,
+  assertTamanhoArquivo,
+  detectarMimeImagem,
   diretorioUpload,
   enviarFoto,
   fotoFsDisco,
   marcarCapa,
+  resolverCaminhoSeguro,
   respostaGetFoto,
+  servirFoto,
+  TAMANHO_MAX_BYTES,
   type DonoRepo,
   type Foto,
   type FotoDados,
@@ -33,8 +38,18 @@ const JPEG = {
   mime: "image/jpeg",
 };
 const PNG = {
-  bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]),
+  bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   mime: "image/png",
+};
+const WEBP = {
+  bytes: new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+  ]),
+  mime: "image/webp",
+};
+const HTML_COMO_JPEG = {
+  bytes: new TextEncoder().encode("<!DOCTYPE html><html><body>x</body></html>"),
+  mime: "image/jpeg",
 };
 
 function criarRepoEmMemoria(iniciais: Foto[] = []): FotoRepo & { fotos: Foto[] } {
@@ -372,7 +387,10 @@ describe("API de fotos", () => {
         {
           donoTipo: "ITEM",
           donoId: DONO_ID,
-          arquivo: { bytes: JPEG.bytes, mime: "image/gif" },
+          arquivo: {
+            bytes: new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]),
+            mime: "image/gif",
+          },
         },
         deps,
       ),
@@ -429,5 +447,146 @@ describe("API de fotos", () => {
     await expect(readFile(caminhoFoto)).rejects.toThrow();
     expect(repo.fotos).toHaveLength(0);
     expect(itemRepo.itens).toHaveLength(0);
+  });
+
+  it("rejeita HTML com mime image/jpeg e não persiste", async () => {
+    await preparar();
+
+    await expectHttpErro(
+      enviarFoto(
+        USUARIO_A,
+        { donoTipo: "ITEM", donoId: DONO_ID, arquivo: HTML_COMO_JPEG },
+        deps,
+      ),
+      400,
+      /Tipo de imagem não permitido\. Use jpeg, png ou webp\./,
+    );
+    expect(repo.fotos).toHaveLength(0);
+  });
+
+  it("persiste o mime detectado pelos bytes e ignora o mime do cliente", async () => {
+    await preparar();
+
+    const jpegDisfarçado = await enviarFoto(
+      USUARIO_A,
+      {
+        donoTipo: "ITEM",
+        donoId: DONO_ID,
+        arquivo: { bytes: JPEG.bytes, mime: "image/png" },
+      },
+      deps,
+    );
+    const pngOk = await enviarFoto(
+      USUARIO_A,
+      { donoTipo: "ITEM", donoId: DONO_ID, arquivo: PNG },
+      deps,
+    );
+    const webpOk = await enviarFoto(
+      USUARIO_A,
+      { donoTipo: "ITEM", donoId: DONO_ID, arquivo: WEBP },
+      deps,
+    );
+
+    expect(jpegDisfarçado.mime).toBe("image/jpeg");
+    expect(jpegDisfarçado.caminho).toBe(`${USUARIO_A}/${jpegDisfarçado.id}.jpg`);
+    expect(pngOk.mime).toBe("image/png");
+    expect(webpOk.mime).toBe("image/webp");
+    expect(webpOk.caminho).toBe(`${USUARIO_A}/${webpOk.id}.webp`);
+  });
+
+  it("GET inclui nosniff e Cache-Control private, no-store", async () => {
+    await preparar();
+    const foto = await enviarFoto(
+      USUARIO_A,
+      { donoTipo: "ITEM", donoId: DONO_ID, arquivo: JPEG },
+      deps,
+    );
+
+    const resposta = await respostaGetFoto(USUARIO_A, foto.id, deps);
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(resposta.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(resposta.headers.get("Cache-Control")).toBe("private, no-store");
+  });
+
+  it("servirFoto recusa path traversal e não lê fora do diretório", async () => {
+    await preparar();
+    const foto = await enviarFoto(
+      USUARIO_A,
+      { donoTipo: "ITEM", donoId: DONO_ID, arquivo: JPEG },
+      deps,
+    );
+    const secreto = path.join(path.dirname(uploadDir), "secret.txt");
+    await writeFile(secreto, "segredo-nao-deve-vazar");
+
+    const raiz = path.resolve(uploadDir);
+    const lerOriginal = deps.fs.readFile.bind(deps.fs);
+    deps.fs.readFile = async (caminho) => {
+      const relativo = path.relative(raiz, path.resolve(caminho));
+      if (relativo.startsWith("..") || path.isAbsolute(relativo)) {
+        throw new Error("readFile chamado fora do diretório de upload");
+      }
+      return lerOriginal(caminho);
+    };
+
+    const registro = repo.fotos.find((item) => item.id === foto.id);
+    expect(registro).toBeDefined();
+    registro!.caminho = "../secret.txt";
+
+    await expectHttpErro(
+      servirFoto(USUARIO_A, foto.id, deps),
+      404,
+      /não encontrado/i,
+    );
+
+    registro!.caminho = "..\\..\\etc\\passwd";
+    const resposta = await respostaGetFoto(USUARIO_A, foto.id, deps);
+    expect(resposta.status).toBe(404);
+    expect(await resposta.text()).not.toContain("segredo-nao-deve-vazar");
+
+    await rm(secreto, { force: true });
+  });
+
+  it("detectarMimeImagem identifica jpeg, png, webp e recusa HTML", () => {
+    expect(detectarMimeImagem(JPEG.bytes)).toBe("image/jpeg");
+    expect(detectarMimeImagem(PNG.bytes)).toBe("image/png");
+    expect(detectarMimeImagem(WEBP.bytes)).toBe("image/webp");
+    expect(detectarMimeImagem(HTML_COMO_JPEG.bytes)).toBeNull();
+  });
+
+  it("resolverCaminhoSeguro recusa caminho fora do diretório com 404", async () => {
+    const raiz = await mkdtemp(path.join(tmpdir(), "fotos-safe-"));
+    try {
+      const seguro = resolverCaminhoSeguro(raiz, "user/a.jpg");
+      expect(path.resolve(seguro)).toBe(path.resolve(raiz, "user/a.jpg"));
+
+      for (const relativo of ["../secret.txt", "..\\..\\etc\\passwd"]) {
+        try {
+          resolverCaminhoSeguro(raiz, relativo);
+          throw new Error(`Esperava HttpErro para ${relativo}`);
+        } catch (erro) {
+          expect(erro).toBeInstanceOf(HttpErro);
+          const http = erro as HttpErro;
+          expect(http.status).toBe(404);
+          expect(http.mensagem).toMatch(/não encontrado/i);
+        }
+      }
+    } finally {
+      await rm(raiz, { recursive: true, force: true });
+    }
+  });
+
+  it("assertTamanhoArquivo recusa tamanho acima de 10 MB com 400", () => {
+    try {
+      assertTamanhoArquivo(TAMANHO_MAX_BYTES + 1);
+      throw new Error("Esperava HttpErro para tamanho acima de 10 MB.");
+    } catch (erro) {
+      expect(erro).toBeInstanceOf(HttpErro);
+      const http = erro as HttpErro;
+      expect(http.status).toBe(400);
+      expect(http.mensagem).toBe("O arquivo excede 10 MB.");
+    }
+    expect(() => assertTamanhoArquivo(TAMANHO_MAX_BYTES)).not.toThrow();
   });
 });

@@ -1,5 +1,6 @@
 import { assertDono, HttpErro } from "../isolamento";
 import type { Item, ItemRepo } from "./itens";
+import { exigirNome, textoOpcional } from "./limites-texto";
 
 export type DeckCarta = {
   itemId: string;
@@ -355,27 +356,6 @@ export function estoqueDaCarta(item: Pick<Item, "ficha">): number {
     return quantidade;
   }
   return 1;
-}
-
-function exigirNome(valor: unknown): string {
-  if (typeof valor !== "string" || valor.trim() === "") {
-    throw new HttpErro(400, "O nome é obrigatório.");
-  }
-  return valor.trim();
-}
-
-function textoOpcional(valor: unknown, campo: string): string | null | undefined {
-  if (valor === undefined) {
-    return undefined;
-  }
-  if (valor === null) {
-    return null;
-  }
-  if (typeof valor !== "string") {
-    throw new HttpErro(400, `O campo ${campo} deve ser texto.`);
-  }
-  const texto = valor.trim();
-  return texto === "" ? null : texto;
 }
 
 function mapearDeck(linha: DeckLinha): Deck {

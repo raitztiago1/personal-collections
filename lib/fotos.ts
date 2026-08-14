@@ -108,6 +108,42 @@ export function diretorioUpload(
   return valor ? valor : "data/uploads";
 }
 
+export function assertTamanhoArquivo(size: number): void {
+  if (size > TAMANHO_MAX_BYTES) {
+    throw new HttpErro(400, "O arquivo excede 10 MB.");
+  }
+}
+
+export function detectarMimeImagem(
+  bytes: Uint8Array,
+): "image/jpeg" | "image/png" | "image/webp" | null {
+  if (assinaturaNoOffset(bytes, [0xff, 0xd8, 0xff], 0)) {
+    return "image/jpeg";
+  }
+  if (
+    assinaturaNoOffset(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0)
+  ) {
+    return "image/png";
+  }
+  if (
+    assinaturaNoOffset(bytes, [0x52, 0x49, 0x46, 0x46], 0) &&
+    assinaturaNoOffset(bytes, [0x57, 0x45, 0x42, 0x50], 8)
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
+export function resolverCaminhoSeguro(uploadDir: string, relativo: string): string {
+  const raiz = path.resolve(uploadDir);
+  const alvo = path.resolve(raiz, relativo);
+  const dentro = path.relative(raiz, alvo);
+  if (dentro.startsWith("..") || path.isAbsolute(dentro)) {
+    throw new HttpErro(404, "Recurso não encontrado.");
+  }
+  return alvo;
+}
+
 export function fotoFsDisco(): FotoFs {
   return {
     async mkdir(dir) {
@@ -226,10 +262,11 @@ export async function enviarFoto(
 ): Promise<Foto> {
   const donoTipo = exigirDonoTipo(input.donoTipo);
   const donoId = exigirDonoId(input.donoId);
-  const mime = exigirMime(input.arquivo.mime);
   const bytes = input.arquivo.bytes;
-  if (bytes.byteLength > TAMANHO_MAX_BYTES) {
-    throw new HttpErro(400, "O arquivo excede 10 MB.");
+  assertTamanhoArquivo(bytes.byteLength);
+  const mime = detectarMimeImagem(bytes);
+  if (!mime) {
+    throw new HttpErro(400, "Tipo de imagem não permitido. Use jpeg, png ou webp.");
   }
   await assertDonoRecurso(usuarioId, donoTipo, donoId, deps.donos);
 
@@ -245,7 +282,7 @@ export async function enviarFoto(
   const ordem = quantidade;
 
   await deps.fs.mkdir(path.join(deps.uploadDir, usuarioId));
-  await deps.fs.writeFile(path.join(deps.uploadDir, caminho), bytes);
+  await deps.fs.writeFile(resolverCaminhoSeguro(deps.uploadDir, caminho), bytes);
 
   try {
     if (isCapa) {
@@ -312,7 +349,9 @@ export async function servirFoto(
     throw new HttpErro(401, "Não autenticado.");
   }
   const foto = await carregarDoDono(usuarioId, fotoId, deps.repo);
-  const bytes = await deps.fs.readFile(path.join(deps.uploadDir, foto.caminho));
+  const bytes = await deps.fs.readFile(
+    resolverCaminhoSeguro(deps.uploadDir, foto.caminho),
+  );
   return { bytes, mime: foto.mime };
 }
 
@@ -325,7 +364,11 @@ export async function respostaGetFoto(
     const arquivo = await servirFoto(usuarioId, fotoId, deps);
     return new Response(new Uint8Array(arquivo.bytes), {
       status: 200,
-      headers: { "Content-Type": arquivo.mime },
+      headers: {
+        "Content-Type": arquivo.mime,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+      },
     });
   } catch (erro) {
     return responderErroFoto(erro);
@@ -384,8 +427,9 @@ async function carregarDoDono(
 }
 
 async function removerArquivo(deps: FotoDeps, caminhoRelativo: string) {
+  const absoluto = resolverCaminhoSeguro(deps.uploadDir, caminhoRelativo);
   try {
-    await deps.fs.unlink(path.join(deps.uploadDir, caminhoRelativo));
+    await deps.fs.unlink(absoluto);
   } catch (erro) {
     if (eErroEnoent(erro)) {
       return;
@@ -408,11 +452,15 @@ function exigirDonoId(valor: unknown): string {
   return valor.trim();
 }
 
-function exigirMime(valor: string): (typeof MIMES_PERMITIDOS)[number] {
-  if ((MIMES_PERMITIDOS as readonly string[]).includes(valor)) {
-    return valor as (typeof MIMES_PERMITIDOS)[number];
+function assinaturaNoOffset(
+  bytes: Uint8Array,
+  assinatura: readonly number[],
+  offset: number,
+): boolean {
+  if (bytes.length < offset + assinatura.length) {
+    return false;
   }
-  throw new HttpErro(400, "Tipo de imagem não permitido. Use jpeg, png ou webp.");
+  return assinatura.every((valor, indice) => bytes[offset + indice] === valor);
 }
 
 function interpretarCapa(valor: unknown): boolean {

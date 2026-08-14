@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import {
+  assertTamanhoArquivo,
   depsFotos,
   enviarFoto,
   responderErroFoto,
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
     if (!(arquivo instanceof File)) {
       throw new HttpErro(400, "O arquivo é obrigatório.");
     }
+    assertTamanhoArquivo(arquivo.size);
     const foto = await enviarFoto(
       id,
       {

@@ -1,7 +1,17 @@
 import bcrypt from "bcryptjs";
 import NextAuth, { type DefaultSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { assertAuthBoot } from "@/lib/auth-boot";
+import { autenticarPorCredenciais } from "@/lib/auth-login";
 import { prisma } from "@/lib/db";
+import { ipDoRequest } from "@/lib/rate-limit";
+
+assertAuthBoot({
+  nodeEnv: process.env.NODE_ENV,
+  authSecret: process.env.AUTH_SECRET,
+  authUrl: process.env.AUTH_URL,
+  nextPhase: process.env.NEXT_PHASE,
+});
 
 declare module "next-auth" {
   interface Session {
@@ -18,7 +28,7 @@ declare module "next-auth/jwt" {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  trustHost: true,
+  trustHost: process.env.NODE_ENV !== "production",
   session: { strategy: "jwt" },
   providers: [
     Credentials({
@@ -26,30 +36,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "E-mail", type: "email" },
         password: { label: "Senha", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request?: Request) {
         const email = credentials.email;
         const password = credentials.password;
         if (typeof email !== "string" || typeof password !== "string") {
           return null;
         }
 
-        const usuario = await prisma.usuario.findUnique({
-          where: { email },
-        });
-        if (!usuario) {
-          return null;
-        }
+        const ip = request ? ipDoRequest(request.headers) : "local";
 
-        const senhaOk = await bcrypt.compare(password, usuario.senhaHash);
-        if (!senhaOk) {
-          return null;
-        }
-
-        return {
-          id: usuario.id,
-          name: usuario.nome,
-          email: usuario.email,
-        };
+        return autenticarPorCredenciais(
+          { email, senha: password, ip },
+          {
+            findByEmail: (emailLookup) =>
+              prisma.usuario.findUnique({ where: { email: emailLookup } }),
+            compare: (senha, hash) => bcrypt.compare(senha, hash),
+          },
+        );
       },
     }),
   ],

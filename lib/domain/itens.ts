@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { assertDono, HttpErro } from "../isolamento";
 import { TIPOS_COLECAO_ITEM, type TipoColecaoItem } from "./colecoes";
+import { exigirNome, tagsOpcional, textoOpcional } from "./limites-texto";
 import { validarFicha } from "./validar-ficha";
 
 export type ItemDados = {
@@ -226,13 +227,6 @@ function montarPatch(
   return patch;
 }
 
-function exigirNome(valor: unknown): string {
-  if (typeof valor !== "string" || valor.trim() === "") {
-    throw new HttpErro(400, "O nome é obrigatório.");
-  }
-  return valor.trim();
-}
-
 function exigirTipoColecaoItem(valor: unknown): TipoColecaoItem {
   if (valor === undefined || valor === null || valor === "") {
     throw new HttpErro(400, "Informe o tipo da coleção.");
@@ -295,20 +289,6 @@ function mensagemFichaInvalida(erro: ZodError): string {
   return "Ficha inválida.";
 }
 
-function textoOpcional(valor: unknown, campo: string): string | null | undefined {
-  if (valor === undefined) {
-    return undefined;
-  }
-  if (valor === null) {
-    return null;
-  }
-  if (typeof valor !== "string") {
-    throw new HttpErro(400, `O campo ${campo} deve ser texto.`);
-  }
-  const texto = valor.trim();
-  return texto === "" ? null : texto;
-}
-
 function dataOpcional(valor: unknown): Date | null | undefined {
   if (valor === undefined) {
     return undefined;
@@ -343,16 +323,6 @@ function numeroOpcional(valor: unknown): number | null | undefined {
     throw new HttpErro(400, "O preço pago é inválido.");
   }
   return valor;
-}
-
-function tagsOpcional(valor: unknown): string[] | undefined {
-  if (valor === undefined) {
-    return undefined;
-  }
-  if (!Array.isArray(valor) || valor.some((tag) => typeof tag !== "string")) {
-    throw new HttpErro(400, "As tags devem ser uma lista de textos.");
-  }
-  return valor.map((tag) => tag.trim()).filter((tag) => tag.length > 0);
 }
 
 function mapearItem(linha: ItemLinha): Item {

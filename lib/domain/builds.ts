@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { assertDono, HttpErro } from "../isolamento";
 import { schemasFichaPeca, type TipoPeca } from "./fichas-peca";
+import { exigirNome, textoOpcional } from "./limites-texto";
 import { validarFichaPeca } from "./validar-ficha";
 
 export type { TipoPeca };
@@ -341,27 +342,6 @@ function mensagemFichaInvalida(erro: ZodError): string {
     return `Ficha inválida no campo '${issue.path.join(".")}'.`;
   }
   return "Ficha inválida.";
-}
-
-function exigirNome(valor: unknown): string {
-  if (typeof valor !== "string" || valor.trim() === "") {
-    throw new HttpErro(400, "O nome é obrigatório.");
-  }
-  return valor.trim();
-}
-
-function textoOpcional(valor: unknown, campo: string): string | null | undefined {
-  if (valor === undefined) {
-    return undefined;
-  }
-  if (valor === null) {
-    return null;
-  }
-  if (typeof valor !== "string") {
-    throw new HttpErro(400, `O campo ${campo} deve ser texto.`);
-  }
-  const texto = valor.trim();
-  return texto === "" ? null : texto;
 }
 
 function mapearBuild(linha: BuildLinha): Build {

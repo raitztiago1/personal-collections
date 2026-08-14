@@ -1,10 +1,12 @@
 import bcrypt from "bcryptjs";
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, signIn } from "@/auth";
 import { registrarUsuario } from "@/lib/auth-register";
 import { prisma } from "@/lib/db";
+import { ipDoRequest } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +36,14 @@ async function registrar(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const senha = String(formData.get("senha") ?? "");
 
+  const ip = ipDoRequest(await headers());
+
   const result = await registrarUsuario(
     { nome, email, senha },
     {
       users,
       hashSenha: (valor) => bcrypt.hash(valor, 12),
+      ip,
     },
   );
 

@@ -7,6 +7,7 @@ import {
   type ItemInput,
   type ItemRepo,
 } from "./itens";
+import { exigirNome, textoOpcional } from "./limites-texto";
 
 const TIPOS_COLECAO_OR_BUILD: readonly TipoColecao[] = [
   ...TIPOS_COLECAO_ITEM,
@@ -372,7 +373,7 @@ function lerValor(
 ): { valorTexto: string | null; valorNumero: number | null } {
   if (tipoValor === "TEXTO") {
     return {
-      valorTexto: textoOpcional(entrada.valorTexto),
+      valorTexto: textoOpcional(entrada.valorTexto, "valorTexto") ?? null,
       valorNumero: null,
     };
   }
@@ -380,17 +381,6 @@ function lerValor(
     valorTexto: null,
     valorNumero: numeroOpcional(entrada.valorNumero),
   };
-}
-
-function textoOpcional(valor: unknown): string | null {
-  if (valor === undefined || valor === null) {
-    return null;
-  }
-  if (typeof valor !== "string") {
-    throw new HttpErro(400, "O valor do campo extra deve ser texto.");
-  }
-  const texto = valor.trim();
-  return texto === "" ? null : texto;
 }
 
 function numeroOpcional(valor: unknown): number | null {
@@ -426,13 +416,6 @@ async function carregarDefDoDono(
   }
   assertDono(usuarioId, def.usuarioId);
   return def;
-}
-
-function exigirNome(valor: unknown): string {
-  if (typeof valor !== "string" || valor.trim() === "") {
-    throw new HttpErro(400, "O nome é obrigatório.");
-  }
-  return valor.trim();
 }
 
 function exigirTipoColecaoOrBuild(valor: unknown): TipoColecao {

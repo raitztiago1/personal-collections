@@ -23,19 +23,29 @@ Sem Docker: aponte `DATABASE_URL` para o seu Postgres. A extensão `unaccent` é
 
 ## Subir localmente
 
-1. Suba o banco (imagem `postgres:16`, user/senha/db `catalogo`, porta 5432):
+Em máquina nova, gere `AUTH_SECRET` **antes** do primeiro `npm run dev` (passo 2). Sem um valor gerado, a sessão Auth.js não sobe.
+
+1. Suba o banco (imagem `postgres:16`, user/senha/db `catalogo`, porta só em `127.0.0.1:5432`):
 
    ```powershell
    docker compose up -d
    ```
 
-2. Copie o exemplo de ambiente e **defina `AUTH_SECRET`** (obrigatório; a sessão Auth.js não sobe sem ele):
+2. Copie o exemplo de ambiente e **gere `AUTH_SECRET`** (obrigatório; faça isso **antes** do primeiro `dev`):
 
    ```powershell
    copy .env.example .env
    ```
 
-   Gere um segredo, por exemplo: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+   Substitua o placeholder `gere-um-valor-longo` por um valor gerado, por exemplo:
+
+   ```powershell
+   openssl rand -base64 32
+   ```
+
+   ou: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+
+   Mantenha `AUTH_URL=http://localhost:3000` no desenvolvimento local.
 
 3. Instale dependências, gere o client Prisma e aplique as migrations:
 
@@ -53,15 +63,16 @@ Sem Docker: aponte `DATABASE_URL` para o seu Postgres. A extensão `unaccent` é
 
 5. Abra [http://localhost:3000](http://localhost:3000), vá em **Registrar** e crie a primeira conta.
 
-Para fechar novos cadastros depois da sua conta: `ALLOW_REGISTRATION=false` no `.env` e reinicie o `dev`. Login das contas existentes continua.
+6. Depois da primeira conta, **se for expor o app** (LAN, túnel ou internet): defina `ALLOW_REGISTRATION=false` no `.env` e reinicie o `dev`. Login das contas existentes continua.
 
 ## Variáveis de ambiente
 
 | Variável | Exemplo | Notas |
 |----------|---------|--------|
 | `DATABASE_URL` | `postgresql://catalogo:catalogo@localhost:5432/catalogo` | Compose local |
-| `AUTH_SECRET` | (segredo longo) | **Obrigatório.** Não commitar valor real |
-| `ALLOW_REGISTRATION` | `true` | `false` bloqueia `/register` (403) |
+| `AUTH_SECRET` | (segredo longo) | **Obrigatório.** Gere **antes** do primeiro `dev`. Não commitar valor real |
+| `AUTH_URL` | `http://localhost:3000` | Origem canônica do Auth.js. Obrigatória em produção (`http:` ou `https:`) |
+| `ALLOW_REGISTRATION` | `true` | `false` bloqueia `/register` (403). Depois da primeira conta, use `false` se for expor |
 | `UPLOAD_DIR` | `data/uploads` | Fotos fora do git; backup = copiar a pasta |
 
 ## Busca e índices
